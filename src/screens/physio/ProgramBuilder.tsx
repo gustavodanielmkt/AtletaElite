@@ -56,7 +56,7 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
             <div className="ml-6">
               <div className="flex gap-4 items-start">
                 <div className="w-24 h-24 rounded-lg overflow-hidden flex-shrink-0 relative">
-                  <img src="https://lh3.googleusercontent.com/aida-public/AB6AXuB2jcAyzdUYo6QWVeGbSQiTRO7XUH2enWECwgObGKYru9BwzIBNZNEcIlc29FVh20-IH65m62tPm2govVKInVbJQVgfEnPq0ZOaaWNBq9o3GjkoOio0vMLrct029a2Ufs2t17zyqK55JjEtkq5EbtY-cKLn7_QLHnJ3uv9-eZm6qiXsHhwIwWnxfXybCX9DOwx32UornX9HIJKjdRueGLfMAyPFx1FO0OXuimk7M-0sTMLEKh3orAXpS1r0YFcZ6XaYxq1Uq1excWsB" alt="Dynamic Lunges" className="w-full h-full object-cover" />
+                  <img src="https://cdn-icons-png.flaticon.com/512/2936/2936886.png" alt="Dynamic Lunges" className="w-full h-full object-cover" />
                   <div className="absolute inset-0 flex items-center justify-center bg-black/20">
                     <PlayCircle size={32} className="text-white" />
                   </div>
@@ -90,7 +90,7 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
             <div className="ml-6">
               <div className="flex gap-4 items-start">
                 <div className="w-24 h-24 rounded-lg overflow-hidden flex-shrink-0 relative">
-                  <img src="https://lh3.googleusercontent.com/aida-public/AB6AXuBfe6T3JjBwuqvmJo54QKf4bhpGVOHJxMlilPSiIsq2hyx4tzatlStnFjVj_N-zaGr9wDmHjmXHgyzhioHimTVr2cdQ_AzAuZknNSKeiev_QzjhpJpnrT_HW7vjP3gF0pCNEnqYLeg_cw980hpJpBF-8XGtt9DRrgUwPwcHewMNzAB2-3CpGF7TwoQNStgJCJzUKrwfhiBj3xMteRix2TX99IZpAT9A4qkjaukKGLFGnStthb-tjdQRCjDYdY-JpS6MYkVLYUJGBFPg" alt="IT Band Foam Roll" className="w-full h-full object-cover" />
+                  <img src="https://cdn-icons-png.flaticon.com/512/2936/2936886.png" alt="IT Band Foam Roll" className="w-full h-full object-cover" />
                   <div className="absolute inset-0 flex items-center justify-center bg-black/20">
                     <PlayCircle size={32} className="text-white" />
                   </div>

@@ -45,7 +45,7 @@ export default function AthleteProfile({ navigate }: { navigate: (screen: string
           <div className="relative mb-4">
             <div className="size-24 rounded-full overflow-hidden border-2 border-primary p-1 bg-slate-900">
               <div className="w-full h-full rounded-full overflow-hidden">
-                <img src={profile?.avatar_url || "https://lh3.googleusercontent.com/aida-public/AB6AXuDf_ZXKi6fvRZBSHRLfjvB9ONRg4pAwEnJ6oJOuxuN5phNpp8F-4qGDRYKQAtpTs88Y7e8ERkq-0RyyelvCvrJwU6fAO50D8negdwjVquY1afIryA5xTUTgIUJDxd5geCjAZVQjSQl9WVtdrSBql_wTfjRus0QGdjKM2JGytbNVRTWYpcn9aGH71PveVA0nlos7Gx4ZkCQJp29PRqmN5BJy8eIyHgBIIgK0jrFfFPJ-5lFOUaF3YJHAeZYa2QW8fwnUkZgu_LgfviCp"} alt={profile?.full_name || 'Atleta'} className="w-full h-full object-cover" />
+                <img src={profile?.avatar_url || "https://cdn-icons-png.flaticon.com/512/149/149071.png"} alt={profile?.full_name || 'Atleta'} className="w-full h-full object-cover" />
               </div>
             </div>
             <div className="absolute bottom-0 right-0 size-6 bg-accent-neon rounded-full border-4 border-background-dark"></div>

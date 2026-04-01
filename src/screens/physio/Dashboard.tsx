@@ -64,7 +64,7 @@ export default function PhysioDashboard({ navigate }: { navigate: (screen: strin
           <div className="space-y-3">
             <div className="bg-accent-danger/10 border border-accent-danger/20 p-4 rounded-xl flex items-start gap-4">
               <div className="size-10 rounded-full bg-slate-800 overflow-hidden shrink-0">
-                <img src="https://lh3.googleusercontent.com/aida-public/AB6AXuA0ekBogXMsC8wfQXLGazFg-ajGSnDtpbyJbXMgp2_hP8RcMMMoxAg6Q4BXnjfDBWZatjrA17o5ZuO3MQ7S-4zxndza2Yv0p09FGQlTYddU6JRWdC6MBrt15mtWCrzyTVD7I_L_LzmB7OdIVFeeMdKyVbIZsA0DJPaUkM98vazNxXNnK78dWV4R9KYwYFzEvARZ3kWF-IK_EGTJyM203Pdm2YbdU9ipxmobIvZn17FKxOKXAe1vPthUHaLCcavOfD2wTTg3K2EVWZiG" alt="Marcus" className="w-full h-full object-cover" />
+                <img src="https://cdn-icons-png.flaticon.com/512/149/149071.png" alt="Marcus" className="w-full h-full object-cover" />
               </div>
               <div className="flex-1">
                 <h3 className="font-bold text-sm">Marcus Sterling: Alerta de Dor (7/10)</h3>
@@ -74,7 +74,7 @@ export default function PhysioDashboard({ navigate }: { navigate: (screen: strin
             </div>
             <div className="bg-accent-warning/10 border border-accent-warning/20 p-4 rounded-xl flex items-start gap-4">
               <div className="size-10 rounded-full bg-slate-800 overflow-hidden shrink-0">
-                <img src="https://lh3.googleusercontent.com/aida-public/AB6AXuB9wm5LxE1W_UUPqWjas8KUPKJLIrDI_6XK1A3PnVFxOs1nbxeWkpwG5kgIeqS7cGNbeBJhY4RGG1Vqo8i9RgNnN8fgPBgvFcWi2oEap0gtDHjq-YzbB59bCGWNHRg_lx-1Su4LnoX0WJS81fOW9emeUvl75mlxjO2O4mRlJSLkxHPPNp1T5YzAcSiiLCR86SKtrRmyyKg0rtFKtUFFhrxLTkiA_vQ4BZDUIMW1Z3YOPJAocDejtAJZQ2tkDGKC3p1NW4xxq_FeMGJ_" alt="Sarah" className="w-full h-full object-cover" />
+                <img src="https://cdn-icons-png.flaticon.com/512/149/149071.png" alt="Sarah" className="w-full h-full object-cover" />
               </div>
               <div className="flex-1">
                 <h3 className="font-bold text-sm">Sarah Chen: Fadiga Extrema</h3>

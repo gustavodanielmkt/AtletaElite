@@ -36,7 +36,7 @@ export default function AthleteDashboard({ navigate }: { navigate: (screen: stri
     <div className="min-h-screen flex flex-col pb-24 bg-background-dark">
       <header className="flex items-center p-4 justify-between sticky top-0 z-10 border-b border-slate-800 bg-background-dark/80 backdrop-blur-md">
         <button onClick={() => navigate('athlete-profile')} className="flex size-10 shrink-0 items-center overflow-hidden rounded-full border-2 border-primary shadow-[0_0_15px_-3px_rgba(16,185,129,0.4)] hover:scale-105 transition-transform cursor-pointer">
-          <img className="w-full h-full object-cover" src={avatarUrl || "https://lh3.googleusercontent.com/aida-public/AB6AXuDf_ZXKi6fvRZBSHRLfjvB9ONRg4pAwEnJ6oJOuxuN5phNpp8F-4qGDRYKQAtpTs88Y7e8ERkq-0RyyelvCvrJwU6fAO50D8negdwjVquY1afIryA5xTUTgIUJDxd5geCjAZVQjSQl9WVtdrSBql_wTfjRus0QGdjKM2JGytbNVRTWYpcn9aGH71PveVA0nlos7Gx4ZkCQJp29PRqmN5BJy8eIyHgBIIgK0jrFfFPJ-5lFOUaF3YJHAeZYa2QW8fwnUkZgu_LgfviCp"} alt="Profile" />
+          <img className="w-full h-full object-cover" src={avatarUrl || "https://cdn-icons-png.flaticon.com/512/149/149071.png"} alt="Profile" />
         </button>
         <div className="flex flex-col items-center">
           <h1 className="text-lg font-extrabold leading-tight tracking-tight bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent italic uppercase pr-1">Elite Performance</h1>

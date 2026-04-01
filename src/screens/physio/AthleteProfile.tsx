@@ -34,7 +34,7 @@ export default function PhysioAthleteProfile({ navigate, athleteId }: { navigate
         <div className="flex w-full flex-col gap-6 md:flex-row md:items-center">
           <div className="flex gap-5 items-center">
             <div className="relative">
-              <div className="bg-center bg-no-repeat aspect-square bg-cover rounded-full h-24 w-24 border-2 border-primary" style={{ backgroundImage: "url('https://lh3.googleusercontent.com/aida-public/AB6AXuDjEgg58ParOgAkHBT6sOxlVH1HktPGvFeyk-4P5fC6bPSySPoLq3OJJqFfJ9O7YI1dusPrKNqib2eK7qxwJka_npKtJOstf0qRDJU4KPJWayJoveE3cdU7Ng3k7AVI7_ZS_GHWTQd1rpbeBOE2s_JWk1_OBZ2_YmaM9GZ-VhXADNThB_8b3PfvGoxVXoIcQEufyw3_LZr_oQL3YeNcLvlnHCxXfAQXRNyRC5h_E0BzXQzaqaktdNzuwnzZ-ALUnIdn1AiA-MCOeyiG')" }}></div>
+              <div className="bg-center bg-no-repeat aspect-square bg-cover rounded-full h-24 w-24 border-2 border-primary" style={{ backgroundImage: "url('https://cdn-icons-png.flaticon.com/512/149/149071.png')" }}></div>
               <div className="absolute bottom-0 right-0 h-6 w-6 bg-accent-neon rounded-full border-4 border-background-dark"></div>
             </div>
             <div className="flex flex-col justify-center">
