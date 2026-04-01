@@ -1,0 +1,44 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #10b981; /* Smaragd Green for more 'life' feel */
+  --color-primary-dark: #059669;
+  --color-accent-neon: #10b981;
+  --color-accent-electric: #3b82f6;
+  --color-accent-success: #10b981;
+  --color-accent-warning: #f59e0b;
+  --color-accent-danger: #ef4444;
+  --color-background-light: #f8fafc;
+  --color-background-dark: #0f172a;
+  --color-surface-dark: #1e293b;
+  --color-border-dark: #334155;
+  --font-display: "Inter", sans-serif;
+}
+
+body {
+  font-family: 'Inter', sans-serif;
+  @apply bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100;
+}
+
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.circular-progress {
+  background: conic-gradient(var(--color-accent-neon) calc(var(--progress) * 1%), #1e293b 0);
+}
+
+.pain-gradient {
+  background: linear-gradient(90deg, var(--color-accent-neon) 0%, #fbbf24 50%, #ef4444 100%);
+}
+
+.progress-ring {
+  transition: stroke-dashoffset 0.35s;
+  transform: rotate(-90deg);
+  transform-origin: 50% 50%;
+}
