@@ -179,7 +179,7 @@ export default function AthleteDashboard({ navigate }: { navigate: (screen: stri
           </div>
           <div className="px-1">
             <div className="flex flex-col items-stretch justify-start rounded-2xl shadow-2xl bg-slate-900/40 backdrop-blur-md border border-slate-800 overflow-hidden group hover:border-primary/50 transition-all duration-500">
-              <div className="w-full h-44 bg-center bg-no-repeat bg-cover relative grayscale-[0.5] group-hover:grayscale-0 transition-all duration-700" style={{ backgroundImage: 'url("https://lh3.googleusercontent.com/aida-public/AB6AXuBEKU0OoXJ6_dKspdig4Z-ZJcB3-67JNFYwmxz5kScMJA3UrifAnZRtu1i3ovtem9a-97M4ECfpC6hdJ8goOZVgBq9JmfvrLDnjZJSgudT5ZPHG9Qe2qp_LxzGEiM_eVncHoY8csK0wMxWAoAIV2NAaZ3J2y9Al8swjluzWq_k899SJf2_avZj7w8adSQH6Jn-8pKiUwQ1_iDn40zO2ejSB3KsxpDY16SXA88yK9fAeF0qE46WqzBthUBqsBreRYynBQf1wKOZkodRO")' }}>
+              <div className="w-full h-44 bg-center bg-no-repeat bg-cover relative grayscale-[0.5] group-hover:grayscale-0 transition-all duration-700" style={{ backgroundImage: 'url("https://images.unsplash.com/photo-1517836357463-d25dfeac3438?w=800&q=80")' }}>
                 <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-transparent"></div>
                 <div className="absolute top-4 right-4 bg-primary text-slate-950 text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-tighter shadow-lg">Elite Level</div>
               </div>
