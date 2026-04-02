@@ -1,8 +1,52 @@
-import React from 'react';
-import { Activity, Search, Bell, AlertCircle, ChevronRight, LayoutDashboard, Users, BarChart, User, LogOut } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Activity, Bell, AlertCircle, LayoutDashboard, Users, BarChart, User, LogOut, Copy, CheckCircle2, RefreshCw } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
+const APP_VERSION = '1.0.1';
+
+function generateInviteCode(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let code = 'ELITE-';
+  for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
+  return code;
+}
+
 export default function PhysioDashboard({ navigate }: { navigate: (screen: string) => void }) {
+  const [inviteCode, setInviteCode] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [generatingCode, setGeneratingCode] = useState(false);
+
+  useEffect(() => {
+    const fetchCode = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) return;
+      const { data } = await supabase.from('profiles').select('invite_code').eq('id', session.user.id).single();
+      if (data?.invite_code) {
+        setInviteCode(data.invite_code);
+      } else {
+        await generateAndSaveCode(session.user.id);
+      }
+    };
+    fetchCode();
+  }, []);
+
+  const generateAndSaveCode = async (userId?: string) => {
+    setGeneratingCode(true);
+    const id = userId || (await supabase.auth.getSession()).data.session?.user.id;
+    if (!id) return;
+    const code = generateInviteCode();
+    await supabase.from('profiles').update({ invite_code: code }).eq('id', id);
+    setInviteCode(code);
+    setGeneratingCode(false);
+  };
+
+  const handleCopy = () => {
+    if (!inviteCode) return;
+    navigator.clipboard.writeText(inviteCode);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
     window.location.reload();
@@ -133,6 +177,30 @@ export default function PhysioDashboard({ navigate }: { navigate: (screen: strin
         </section>
 
         <section>
+          <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-5">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <h2 className="text-sm font-black uppercase tracking-widest text-blue-400">Código de Convite</h2>
+                <p className="text-xs text-slate-400 mt-0.5">Compartilhe com seus atletas para vincularem a conta</p>
+              </div>
+              <button onClick={() => generateAndSaveCode()} disabled={generatingCode} className="text-slate-400 hover:text-blue-400 transition-colors disabled:opacity-50">
+                <RefreshCw size={16} className={generatingCode ? 'animate-spin' : ''} />
+              </button>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="flex-1 bg-slate-900 rounded-xl px-4 py-3 text-center">
+                <span className="text-2xl font-black tracking-widest text-blue-400">
+                  {inviteCode || '— — — — — —'}
+                </span>
+              </div>
+              <button onClick={handleCopy} disabled={!inviteCode} className="h-12 w-12 flex items-center justify-center bg-blue-500 text-white rounded-xl hover:bg-blue-600 transition-colors disabled:opacity-50">
+                {copied ? <CheckCircle2 size={18} /> : <Copy size={18} />}
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section>
           <div className="bg-slate-900 rounded-xl p-5 border border-slate-800">
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-lg font-bold">Agenda de Hoje</h2>
@@ -165,6 +233,7 @@ export default function PhysioDashboard({ navigate }: { navigate: (screen: strin
       </main>
 
       <nav className="fixed bottom-0 left-0 right-0 z-30 bg-slate-900/90 backdrop-blur-lg border-t border-slate-800 pb-6 pt-2">
+        <p className="text-center text-[9px] text-slate-700 font-bold tracking-widest uppercase pt-1">v{APP_VERSION}</p>
         <div className="flex items-center justify-around px-2">
           <button className="flex flex-col items-center gap-1 py-2 px-3 text-primary">
             <LayoutDashboard size={24} />

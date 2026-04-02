@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Bell, Clock, MapPin, ChevronRight, Home, Dumbbell, LineChart, MessageSquare, User, Lock, X, Link2, Loader2, CheckCircle2 } from 'lucide-react';
+
+const APP_VERSION = '1.0.1';
 import { supabase } from '../../lib/supabase';
 
 export default function AthleteDashboard({ navigate }: { navigate: (screen: string) => void }) {
@@ -309,7 +311,9 @@ export default function AthleteDashboard({ navigate }: { navigate: (screen: stri
         </div>
       )}
 
-      <nav className="fixed bottom-0 left-0 right-0 z-20 flex bg-slate-900/80 backdrop-blur-xl border-t border-slate-800 px-2 pb-8 pt-4">
+      <nav className="fixed bottom-0 left-0 right-0 z-20 flex flex-col bg-slate-900/80 backdrop-blur-xl border-t border-slate-800 px-2 pb-8 pt-2">
+        <p className="text-center text-[9px] text-slate-700 font-bold tracking-widest uppercase mb-1">v{APP_VERSION}</p>
+        <div className="flex">
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-1/4 h-[1px] bg-primary/30"></div>
         <button onClick={() => navigate('athlete-dashboard')} className="flex flex-1 flex-col items-center justify-center gap-1.5 text-primary">
           <div className="flex h-7 items-center justify-center drop-shadow-[0_0_8px_rgba(16,185,129,0.5)]"><Home size={22} strokeWidth={2.5} /></div>
@@ -331,6 +335,7 @@ export default function AthleteDashboard({ navigate }: { navigate: (screen: stri
           <div className="flex h-7 items-center justify-center"><User size={22} /></div>
           <p className="text-[10px] font-bold leading-normal uppercase tracking-tighter">Perfil</p>
         </button>
+        </div>
       </nav>
     </div>
   );
