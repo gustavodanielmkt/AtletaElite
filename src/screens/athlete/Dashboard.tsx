@@ -5,6 +5,7 @@ import { Bell, Clock, MapPin, ChevronRight, Home, Dumbbell, LineChart, MessageSq
 const APP_VERSION = '1.0.1';
 import { supabase } from '../../lib/supabase';
 
+
 export default function AthleteDashboard({ navigate }: { navigate: (screen: string) => void }) {
   const [isLimited, setIsLimited] = useState(false);
   const [showLinkModal, setShowLinkModal] = useState(false);
@@ -49,7 +50,6 @@ export default function AthleteDashboard({ navigate }: { navigate: (screen: stri
       return;
     }
 
-    localStorage.removeItem('elite_is_limited');
     setLinkSuccess(true);
     setLinkLoading(false);
     setTimeout(() => {
@@ -68,20 +68,16 @@ export default function AthleteDashboard({ navigate }: { navigate: (screen: stri
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    setIsLimited(localStorage.getItem('elite_is_limited') === 'true');
-
-    // Fetch user avatar
     const getProfile = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) {
         const { data } = await supabase
           .from('profiles')
-          .select('avatar_url')
+          .select('avatar_url, physio_id')
           .eq('id', session.user.id)
           .single();
-        if (data?.avatar_url) {
-          setAvatarUrl(data.avatar_url);
-        }
+        if (data?.avatar_url) setAvatarUrl(data.avatar_url);
+        setIsLimited(!data?.physio_id);
       }
     };
     getProfile();

@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Settings, Bandage, History, Timer, Flag, Activity, Calendar, ChevronRight, Home, Dumbbell, LineChart, MessageSquare, User, LogOut } from 'lucide-react';
+import { ArrowLeft, Settings, Bandage, Flag, Activity, Home, Dumbbell, LineChart, MessageSquare, User, LogOut, Link2, UserCheck, AlertCircle } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
 export default function AthleteProfile({ navigate }: { navigate: (screen: string) => void }) {
   const [profile, setProfile] = useState<any>(null);
+  const [physio, setPhysio] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -17,6 +18,14 @@ export default function AthleteProfile({ navigate }: { navigate: (screen: string
           .single();
         if (data) {
           setProfile(data);
+          if (data.physio_id) {
+            const { data: physioData } = await supabase
+              .from('profiles')
+              .select('full_name, specialty, council_number')
+              .eq('id', data.physio_id)
+              .single();
+            if (physioData) setPhysio(physioData);
+          }
         }
       }
       setLoading(false);
@@ -74,6 +83,44 @@ export default function AthleteProfile({ navigate }: { navigate: (screen: string
               </div>
             </div>
           ))}
+        </section>
+
+        <section className="bg-slate-900 rounded-xl p-5 border border-slate-800">
+          <div className="flex items-center gap-2 mb-4">
+            <Link2 size={18} className={physio ? 'text-primary' : 'text-amber-500'} />
+            <h3 className="text-base font-black uppercase tracking-widest">Meu Profissional</h3>
+          </div>
+          {physio ? (
+            <div className="flex items-center gap-4">
+              <div className="size-12 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
+                <UserCheck size={24} className="text-primary" />
+              </div>
+              <div className="flex-1">
+                <p className="font-bold text-white">{physio.full_name}</p>
+                <p className="text-xs text-slate-400">{physio.specialty || 'Profissional de Saúde'}</p>
+                {physio.council_number && (
+                  <p className="text-[10px] text-slate-500 mt-0.5">{physio.council_number}</p>
+                )}
+              </div>
+              <span className="text-[9px] font-black uppercase tracking-widest text-primary bg-primary/10 px-2 py-1 rounded-full border border-primary/20">Vinculado</span>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center py-4 text-center gap-3">
+              <div className="p-3 bg-amber-500/10 rounded-full">
+                <AlertCircle size={24} className="text-amber-500" />
+              </div>
+              <div>
+                <p className="font-bold text-sm text-slate-300">Nenhum profissional vinculado</p>
+                <p className="text-xs text-slate-500 mt-1">Solicite o código de convite ao seu fisioterapeuta.</p>
+              </div>
+              <button
+                onClick={() => navigate('athlete-dashboard')}
+                className="text-xs font-black uppercase tracking-widest text-amber-500 border border-amber-500/30 px-4 py-2 rounded-lg hover:bg-amber-500/10 transition-colors"
+              >
+                Vincular Agora
+              </button>
+            </div>
+          )}
         </section>
 
         <section className="bg-slate-900 rounded-xl p-5 border border-slate-800">
