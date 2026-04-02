@@ -1,10 +1,62 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Bell, Clock, MapPin, ChevronRight, Home, Dumbbell, LineChart, MessageSquare, User, Lock } from 'lucide-react';
+import { Bell, Clock, MapPin, ChevronRight, Home, Dumbbell, LineChart, MessageSquare, User, Lock, X, Link2, Loader2, CheckCircle2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
 export default function AthleteDashboard({ navigate }: { navigate: (screen: string) => void }) {
   const [isLimited, setIsLimited] = useState(false);
+  const [showLinkModal, setShowLinkModal] = useState(false);
+  const [inviteCode, setInviteCode] = useState('');
+  const [linkLoading, setLinkLoading] = useState(false);
+  const [linkError, setLinkError] = useState<string | null>(null);
+  const [linkSuccess, setLinkSuccess] = useState(false);
+
+  const handleLink = async () => {
+    if (!inviteCode.trim()) return;
+    setLinkLoading(true);
+    setLinkError(null);
+
+    const { data: physio, error } = await supabase
+      .from('profiles')
+      .select('id, full_name')
+      .eq('invite_code', inviteCode.trim().toUpperCase())
+      .eq('role', 'physio')
+      .single();
+
+    if (error || !physio) {
+      setLinkError('Código inválido. Verifique com seu fisioterapeuta.');
+      setLinkLoading(false);
+      return;
+    }
+
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user) {
+      setLinkError('Sessão expirada. Faça login novamente.');
+      setLinkLoading(false);
+      return;
+    }
+
+    const { error: updateError } = await supabase
+      .from('profiles')
+      .update({ physio_id: physio.id })
+      .eq('id', session.user.id);
+
+    if (updateError) {
+      setLinkError('Erro ao vincular. Tente novamente.');
+      setLinkLoading(false);
+      return;
+    }
+
+    localStorage.removeItem('elite_is_limited');
+    setLinkSuccess(true);
+    setLinkLoading(false);
+    setTimeout(() => {
+      setIsLimited(false);
+      setShowLinkModal(false);
+      setLinkSuccess(false);
+      setInviteCode('');
+    }, 2000);
+  };
 
   const today = new Date();
   const weekdays = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
@@ -56,7 +108,7 @@ export default function AthleteDashboard({ navigate }: { navigate: (screen: stri
             <Lock size={14} className="text-amber-500" />
             <p className="text-[10px] font-black uppercase tracking-widest text-amber-500">Modo Limitado Ativo</p>
           </div>
-          <button className="text-[9px] font-black uppercase tracking-widest text-amber-500 border border-amber-500/30 px-3 py-1.5 rounded-lg hover:bg-amber-500/20 transition-colors">Vincular</button>
+          <button onClick={() => setShowLinkModal(true)} className="text-[9px] font-black uppercase tracking-widest text-amber-500 border border-amber-500/30 px-3 py-1.5 rounded-lg hover:bg-amber-500/20 transition-colors">Vincular</button>
         </div>
       )}
 
@@ -210,6 +262,52 @@ export default function AthleteDashboard({ navigate }: { navigate: (screen: stri
           </div>
         </section>
       </main>
+
+      {showLinkModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+            <div className="flex items-center justify-between mb-5">
+              <div className="flex items-center gap-2">
+                <Link2 size={18} className="text-amber-500" />
+                <h2 className="font-black uppercase tracking-widest text-sm">Vincular Fisioterapeuta</h2>
+              </div>
+              <button onClick={() => { setShowLinkModal(false); setLinkError(null); setInviteCode(''); }} className="text-slate-500 hover:text-white transition-colors">
+                <X size={20} />
+              </button>
+            </div>
+
+            {linkSuccess ? (
+              <div className="flex flex-col items-center gap-3 py-4">
+                <CheckCircle2 size={48} className="text-primary" />
+                <p className="text-sm font-bold text-primary uppercase tracking-widest">Vinculado com sucesso!</p>
+              </div>
+            ) : (
+              <>
+                <p className="text-xs text-slate-400 leading-relaxed mb-5">
+                  Insira o código de convite fornecido pelo seu fisioterapeuta para desbloquear o plano completo.
+                </p>
+                <input
+                  type="text"
+                  value={inviteCode}
+                  onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
+                  placeholder="Ex: ELITE-2026"
+                  className="w-full h-14 bg-slate-800 border border-slate-700 rounded-xl px-4 text-sm font-bold tracking-widest uppercase text-center focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 outline-none transition-all mb-3"
+                />
+                {linkError && (
+                  <p className="text-xs text-red-400 font-bold text-center mb-3 uppercase tracking-wide">{linkError}</p>
+                )}
+                <button
+                  onClick={handleLink}
+                  disabled={linkLoading || !inviteCode.trim()}
+                  className="w-full h-12 bg-amber-500 text-slate-950 font-black uppercase tracking-widest text-sm rounded-xl flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {linkLoading ? <Loader2 size={18} className="animate-spin" /> : 'Confirmar Vínculo'}
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       <nav className="fixed bottom-0 left-0 right-0 z-20 flex bg-slate-900/80 backdrop-blur-xl border-t border-slate-800 px-2 pb-8 pt-4">
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-1/4 h-[1px] bg-primary/30"></div>
