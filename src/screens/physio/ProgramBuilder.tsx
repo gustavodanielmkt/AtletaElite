@@ -2,6 +2,11 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { ArrowLeft, Search, GripVertical, PlayCircle, PlusCircle, Edit, Dumbbell, LineChart, User, X, Loader2 } from 'lucide-react';
 import { searchExercises, getExercisesByCategory, type Exercise } from '../../services/exerciseService';
 
+function proxyGif(gifUrl: string): string {
+  if (!gifUrl) return '';
+  return `/api/exercise-image?url=${encodeURIComponent(gifUrl)}`;
+}
+
 const CATEGORIES = [
   { key: 'warmup',   label: 'Aquecimento' },
   { key: 'mobility', label: 'Mobilidade' },
@@ -149,7 +154,7 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
                 >
                   <div className="relative w-full aspect-square bg-slate-800">
                     <img
-                      src={exercise.gifUrl}
+                      src={proxyGif(exercise.gifUrl)}
                       alt={exercise.name}
                       className="w-full h-full object-cover"
                       loading="lazy"
@@ -197,7 +202,7 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
                         className="w-20 h-20 rounded-lg overflow-hidden flex-shrink-0 relative cursor-pointer"
                         onClick={() => setPreviewExercise(exercise)}
                       >
-                        <img src={exercise.gifUrl} alt={exercise.name} className="w-full h-full object-cover" />
+                        <img src={proxyGif(exercise.gifUrl)} alt={exercise.name} className="w-full h-full object-cover" />
                         <div className="absolute inset-0 flex items-center justify-center bg-black/20">
                           <PlayCircle size={24} className="text-white" />
                         </div>
