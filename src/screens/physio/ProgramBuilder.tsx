@@ -7,6 +7,36 @@ function proxyGif(gifUrl: string): string {
   return `/api/exercise-image?url=${encodeURIComponent(gifUrl)}`;
 }
 
+const BODY_PART_PT: Record<string, string> = {
+  back: 'Costas', cardio: 'Cardio', chest: 'Peito', neck: 'Pescoço',
+  shoulders: 'Ombros', 'upper arms': 'Braços', 'lower arms': 'Antebraços',
+  'upper legs': 'Coxas', 'lower legs': 'Panturrilhas', waist: 'Abdômen',
+};
+
+const TARGET_PT: Record<string, string> = {
+  abductors: 'Abdutores', abs: 'Abdômen', adductors: 'Adutores',
+  biceps: 'Bíceps', calves: 'Panturrilhas', 'cardiovascular system': 'Sistema Cardiovascular',
+  delts: 'Deltoides', forearms: 'Antebraços', glutes: 'Glúteos',
+  hamstrings: 'Isquiotibiais', lats: 'Latíssimo', 'levator scapulae': 'Elevador da Escápula',
+  pectorals: 'Peitoral', quads: 'Quadríceps', 'serratus anterior': 'Serrátil',
+  spine: 'Coluna', traps: 'Trapézio', triceps: 'Tríceps', 'upper back': 'Parte Superior das Costas',
+};
+
+const EQUIPMENT_PT: Record<string, string> = {
+  assisted: 'Assistido', band: 'Elástico', barbell: 'Barra', 'body weight': 'Peso Corporal',
+  bosu: 'Bosu', cable: 'Cabo/Polia', dumbbell: 'Haltere', 'elliptical machine': 'Elíptico',
+  'ez barbell': 'Barra EZ', hammer: 'Martelo', kettlebell: 'Kettlebell',
+  'leverage machine': 'Máquina', 'medicine ball': 'Bola Medicinal', olympic: 'Olímpico',
+  'resistance band': 'Faixa Elástica', roller: 'Rolo', rope: 'Corda',
+  'smith machine': 'Smith', 'stability ball': 'Bola de Estabilidade',
+  stationary: 'Estacionário', trap: 'Armadilha', tire: 'Pneu', 'upper body ergometer': 'Ergômetro',
+  weighted: 'Com Peso', wheel: 'Roda',
+};
+
+function pt(map: Record<string, string>, key: string): string {
+  return map[key?.toLowerCase()] ?? key;
+}
+
 const CATEGORIES = [
   { key: 'warmup',   label: 'Aquecimento' },
   { key: 'mobility', label: 'Mobilidade' },
@@ -165,7 +195,7 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
                   </div>
                   <div className="p-2">
                     <p className="text-xs font-bold text-slate-100 capitalize truncate">{exercise.name}</p>
-                    <p className="text-[10px] text-[#ccff00] uppercase tracking-tight truncate">{exercise.target}</p>
+                    <p className="text-[10px] text-[#ccff00] uppercase tracking-tight truncate">{pt(TARGET_PT, exercise.target)}</p>
                   </div>
                 </button>
               ))}
@@ -209,7 +239,7 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
                       </div>
                       <div className="flex-1">
                         <h4 className="font-bold text-slate-100 capitalize">{exercise.name}</h4>
-                        <p className="text-xs text-[#ccff00] font-medium mb-3 uppercase tracking-tighter">{exercise.target} • {exercise.equipment}</p>
+                        <p className="text-xs text-[#ccff00] font-medium mb-3 uppercase tracking-tighter">{pt(TARGET_PT, exercise.target)} • {pt(EQUIPMENT_PT, exercise.equipment)}</p>
                         <div className="grid grid-cols-3 gap-2">
                           <div className="flex flex-col">
                             <span className="text-[10px] text-slate-500 uppercase font-bold">Séries</span>
@@ -268,10 +298,10 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
             </div>
             <div className="p-5">
               <h3 className="text-xl font-bold capitalize mb-1">{previewExercise.name}</h3>
-              <p className="text-[#ccff00] text-sm uppercase tracking-wider mb-4">{previewExercise.target} • {previewExercise.equipment}</p>
+              <p className="text-[#ccff00] text-sm uppercase tracking-wider mb-4">{pt(TARGET_PT, previewExercise.target)} • {pt(EQUIPMENT_PT, previewExercise.equipment)}</p>
               {previewExercise.secondaryMuscles.length > 0 && (
                 <p className="text-xs text-slate-400 mb-4">
-                  Músculos secundários: {previewExercise.secondaryMuscles.join(', ')}
+                  Músculos secundários: {previewExercise.secondaryMuscles.map(m => pt(TARGET_PT, m)).join(', ')}
                 </p>
               )}
               {previewExercise.instructions.length > 0 && (
