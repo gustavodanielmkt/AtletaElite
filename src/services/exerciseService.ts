@@ -25,10 +25,10 @@ function mapApiExercise(raw: Record<string, unknown>): Exercise {
   return {
     id:               String(raw.id),
     name:             String(raw.name),
-    bodyPart:         String(raw.bodyPart),
-    target:           String(raw.target),
-    equipment:        String(raw.equipment),
-    gifUrl:           String(raw.gifUrl),
+    bodyPart:         String(raw.bodyPart || raw.body_part || ''),
+    target:           String(raw.target || ''),
+    equipment:        String(raw.equipment || ''),
+    gifUrl:           String(raw.gifUrl || raw.gif_url || raw.animationUrl || ''),
     secondaryMuscles: Array.isArray(raw.secondaryMuscles) ? raw.secondaryMuscles.map(String) : [],
     instructions:     Array.isArray(raw.instructions) ? raw.instructions.map(String) : [],
   };
@@ -45,6 +45,7 @@ async function fetchFromApi(endpoint: string): Promise<Exercise[]> {
   if (!res.ok) throw new Error(`ExerciseDB API error: ${res.status}`);
   const json = await res.json();
   const items: Record<string, unknown>[] = Array.isArray(json) ? json : (json.data ?? []);
+  if (items.length > 0) console.log('[ExerciseDB] sample item keys:', Object.keys(items[0]), items[0]);
   return items.map(mapApiExercise);
 }
 
@@ -67,10 +68,10 @@ function mapDbRow(row: Record<string, unknown>): Exercise {
   return {
     id:               String(row.id),
     name:             String(row.name),
-    bodyPart:         String(row.body_part),
-    target:           String(row.target),
-    equipment:        String(row.equipment),
-    gifUrl:           String(row.gif_url),
+    bodyPart:         String(row.body_part || ''),
+    target:           String(row.target || ''),
+    equipment:        String(row.equipment || ''),
+    gifUrl:           row.gif_url ? String(row.gif_url) : '',
     secondaryMuscles: Array.isArray(row.secondary_muscles) ? row.secondary_muscles.map(String) : [],
     instructions:     Array.isArray(row.instructions) ? row.instructions.map(String) : [],
   };
@@ -106,6 +107,7 @@ export async function getExercisesByCategory(category: string): Promise<Exercise
     .from('exercises')
     .select('*')
     .in('body_part', bodyParts)
+    .not('gif_url', 'is', null)
     .limit(20);
 
   if (cached && cached.length >= 10) {

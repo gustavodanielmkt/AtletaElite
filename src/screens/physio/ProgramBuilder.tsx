@@ -3,7 +3,7 @@ import { ArrowLeft, Search, GripVertical, PlayCircle, PlusCircle, Edit, Dumbbell
 import { searchExercises, getExercisesByCategory, type Exercise } from '../../services/exerciseService';
 
 function proxyGif(gifUrl: string): string {
-  if (!gifUrl) return '';
+  if (!gifUrl || gifUrl === 'undefined') return '';
   return `/api/exercise-image?url=${encodeURIComponent(gifUrl)}`;
 }
 
