@@ -4,7 +4,7 @@ import { searchExercises, getExercisesByCategory, type Exercise } from '../../se
 
 function proxyGif(gifUrl: string): string {
   if (!gifUrl) return '';
-  return `/api/exercise-image?url=${encodeURIComponent(gifUrl)}`;
+  return gifUrl;
 }
 
 const BODY_PART_PT: Record<string, string> = {
