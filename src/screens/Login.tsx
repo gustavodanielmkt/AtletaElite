@@ -63,7 +63,7 @@ export default function Login({
                     <div className="size-20 bg-primary/10 rounded-3xl flex items-center justify-center border border-primary/20 mb-6 group hover:border-primary/50 transition-all duration-500 shadow-[0_0_30px_rgba(16,185,129,0.2)]">
                         <Target className="text-primary group-hover:scale-110 transition-transform" size={40} />
                     </div>
-                    <h1 className="text-3xl font-black italic uppercase tracking-tighter bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent">Elite Performance</h1>
+                    <h1 className="text-3xl font-black italic uppercase tracking-tighter bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent">Atleta Elite</h1>
                     <p className="text-slate-500 text-sm font-bold uppercase tracking-[0.3em] mt-2">Acesse sua Central de Comando</p>
                 </div>
 

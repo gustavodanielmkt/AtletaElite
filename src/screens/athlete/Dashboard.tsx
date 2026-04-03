@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Bell, Clock, MapPin, ChevronRight, Home, Dumbbell, LineChart, MessageSquare, User, Lock, X, Link2, Loader2, CheckCircle2 } from 'lucide-react';
 
-const APP_VERSION = '1.0.1';
+const APP_VERSION = '1.0.2';
 import { supabase } from '../../lib/supabase';
 
 
@@ -89,7 +89,7 @@ export default function AthleteDashboard({ navigate }: { navigate: (screen: stri
           <img className="w-full h-full object-cover" src={avatarUrl || "https://cdn-icons-png.flaticon.com/512/149/149071.png"} alt="Profile" />
         </button>
         <div className="flex flex-col items-center">
-          <h1 className="text-lg font-extrabold leading-tight tracking-tight bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent italic uppercase pr-1">Elite Performance</h1>
+          <h1 className="text-lg font-extrabold leading-tight tracking-tight bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent italic uppercase pr-1">Atleta Elite</h1>
           <p className="text-[10px] font-bold text-primary uppercase tracking-[0.2em] opacity-80">{formattedDate}</p>
         </div>
         <div className="flex w-10 items-center justify-end">

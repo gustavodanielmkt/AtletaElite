@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Activity, Bell, AlertCircle, LayoutDashboard, Users, BarChart, User, LogOut, Copy, CheckCircle2, RefreshCw } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { getPhysioDashboardStats, type PhysioDashboardStats } from '../../services/physioService';
 
-const APP_VERSION = '1.0.1';
+const APP_VERSION = '1.0.2';
 
 function generateInviteCode(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -15,6 +16,8 @@ export default function PhysioDashboard({ navigate }: { navigate: (screen: strin
   const [inviteCode, setInviteCode] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [generatingCode, setGeneratingCode] = useState(false);
+  const [stats, setStats] = useState<PhysioDashboardStats | null>(null);
+  const [statsLoading, setStatsLoading] = useState(true);
 
   useEffect(() => {
     const fetchCode = async () => {
@@ -28,6 +31,20 @@ export default function PhysioDashboard({ navigate }: { navigate: (screen: strin
       }
     };
     fetchCode();
+  }, []);
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) return;
+      try {
+        const data = await getPhysioDashboardStats(session.user.id);
+        setStats(data);
+      } finally {
+        setStatsLoading(false);
+      }
+    };
+    fetchStats();
   }, []);
 
   const generateAndSaveCode = async (userId?: string) => {
@@ -61,8 +78,8 @@ export default function PhysioDashboard({ navigate }: { navigate: (screen: strin
               <Activity className="text-primary" size={20} />
             </div>
             <div>
-              <h1 className="text-xl font-bold leading-tight tracking-tight">Elite Performance</h1>
-              <p className="text-xs text-slate-400">Painel de Fisioterapia</p>
+              <h1 className="text-xl font-bold leading-tight tracking-tight">Atleta Elite</h1>
+              <p className="text-xs text-slate-400">Painel do Profissional</p>
             </div>
           </div>
           <div className="flex gap-2">
@@ -80,19 +97,27 @@ export default function PhysioDashboard({ navigate }: { navigate: (screen: strin
       <main className="flex-1 px-4 py-6 space-y-6">
         <section className="grid grid-cols-2 gap-3">
           <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 flex flex-col items-center justify-center text-center">
-            <span className="text-3xl font-bold text-white mb-1">24</span>
+            <span className="text-3xl font-bold text-white mb-1">
+              {statsLoading ? '—' : stats?.totalAthletes ?? 0}
+            </span>
             <span className="text-slate-400 text-sm font-medium">Total de Atletas</span>
           </div>
           <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 flex flex-col items-center justify-center text-center">
-            <span className="text-3xl font-bold text-accent-warning mb-1">3</span>
+            <span className="text-3xl font-bold text-accent-warning mb-1">
+              {statsLoading ? '—' : stats?.needAttention ?? 0}
+            </span>
             <span className="text-slate-400 text-sm font-medium">Precisam de Atenção</span>
           </div>
           <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 flex flex-col items-center justify-center text-center">
-            <span className="text-3xl font-bold text-accent-danger mb-1">2</span>
+            <span className="text-3xl font-bold text-accent-danger mb-1">
+              {statsLoading ? '—' : stats?.activeInjuries ?? 0}
+            </span>
             <span className="text-slate-400 text-sm font-medium">Lesões Ativas</span>
           </div>
           <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 flex flex-col items-center justify-center text-center">
-            <span className="text-3xl font-bold text-primary mb-1">8</span>
+            <span className="text-3xl font-bold text-primary mb-1">
+              {statsLoading ? '—' : stats?.todaySessions ?? 0}
+            </span>
             <span className="text-slate-400 text-sm font-medium">Sessões de Hoje</span>
           </div>
         </section>
