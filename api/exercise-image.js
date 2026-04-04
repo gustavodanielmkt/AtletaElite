@@ -1,6 +1,6 @@
-const https = require('https');
+import https from 'https';
 
-module.exports = async function handler(req, res) {
+export default function handler(req, res) {
   const { id } = req.query;
   if (!id) return res.status(400).end();
 
@@ -16,7 +16,7 @@ module.exports = async function handler(req, res) {
 
   return new Promise((resolve) => {
     const request = https.request(options, (response) => {
-      console.log(`[proxy] status: ${response.statusCode}, content-type: ${response.headers['content-type']}`);
+      console.log(`[proxy] status: ${response.statusCode}`);
 
       if (response.statusCode !== 200) {
         res.status(response.statusCode).end();
@@ -43,4 +43,4 @@ module.exports = async function handler(req, res) {
 
     request.end();
   });
-};
+}
