@@ -1,11 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { ArrowLeft, Search, GripVertical, PlayCircle, PlusCircle, Edit, Dumbbell, LineChart, User, X, Loader2 } from 'lucide-react';
 import { searchExercises, getExercisesByCategory, type Exercise } from '../../services/exerciseService';
-
-function proxyGif(exerciseId: string): string {
-  if (!exerciseId) return '';
-  return `/api/exercise-image?id=${exerciseId}`;
-}
+import ExerciseGif from '../../components/ExerciseGif';
 
 const BODY_PART_PT: Record<string, string> = {
   back: 'Costas', cardio: 'Cardio', chest: 'Peito', neck: 'Pescoço',
@@ -183,11 +179,10 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
                   className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden text-left hover:border-[#ccff00]/50 transition-colors group"
                 >
                   <div className="relative w-full aspect-square bg-slate-800">
-                    <img
-                      src={proxyGif(exercise.id)}
+                    <ExerciseGif
+                      exerciseId={exercise.id}
                       alt={exercise.name}
                       className="w-full h-full object-cover"
-                      loading="lazy"
                     />
                     <div className="absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity">
                       <PlayCircle size={32} className="text-white" />
@@ -232,7 +227,7 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
                         className="w-20 h-20 rounded-lg overflow-hidden flex-shrink-0 relative cursor-pointer"
                         onClick={() => setPreviewExercise(exercise)}
                       >
-                        <img src={proxyGif(exercise.id)} alt={exercise.name} className="w-full h-full object-cover" />
+                        <ExerciseGif exerciseId={exercise.id} alt={exercise.name} className="w-full h-full object-cover" />
                         <div className="absolute inset-0 flex items-center justify-center bg-black/20">
                           <PlayCircle size={24} className="text-white" />
                         </div>
@@ -291,7 +286,7 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-end justify-center" onClick={() => setPreviewExercise(null)}>
           <div className="bg-slate-900 rounded-t-3xl w-full max-w-2xl max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="relative">
-              <img src={proxyGif(previewExercise.id)} alt={previewExercise.name} className="w-full aspect-square object-cover rounded-t-3xl" />
+              <ExerciseGif exerciseId={previewExercise.id} alt={previewExercise.name} className="w-full aspect-square object-cover rounded-t-3xl" />
               <button onClick={() => setPreviewExercise(null)} className="absolute top-4 right-4 bg-black/50 rounded-full p-2 text-white">
                 <X size={20} />
               </button>

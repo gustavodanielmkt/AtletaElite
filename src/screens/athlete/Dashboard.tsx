@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Bell, Clock, MapPin, ChevronRight, Home, Dumbbell, LineChart, MessageSquare, User, Lock, X, Link2, Loader2, CheckCircle2 } from 'lucide-react';
 
-const APP_VERSION = '1.1.6';
+const APP_VERSION = '1.1.7';
 import { supabase } from '../../lib/supabase';
 
 
