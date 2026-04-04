@@ -27,7 +27,7 @@ function mapApiExercise(raw: Record<string, unknown>): Exercise {
     ? String(raw.gifUrl)
     : raw.gif_url
       ? String(raw.gif_url)
-      : `https://v2.exercisedb.io/image/${id}`;
+      : `https://v2.exercisedb.io/image/${id}.gif`;
   return {
     id,
     name:             String(raw.name),

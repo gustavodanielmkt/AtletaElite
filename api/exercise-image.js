@@ -8,8 +8,15 @@ export default async function handler(req, res) {
   try {
     const decodedUrl = decodeURIComponent(url);
 
-    // Imagens do exercisedb são públicas — não enviar headers de auth
-    const response = await fetch(decodedUrl);
+    const response = await fetch(decodedUrl, {
+      headers: {
+        'x-rapidapi-key':  process.env.VITE_RAPIDAPI_KEY,
+        'x-rapidapi-host': process.env.VITE_RAPIDAPI_HOST,
+        'User-Agent': 'Mozilla/5.0',
+      },
+    });
+
+    console.log('Proxy fetch:', decodedUrl, '-> status:', response.status);
 
     if (!response.ok) return res.status(response.status).end();
 
