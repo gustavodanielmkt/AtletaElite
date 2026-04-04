@@ -71,16 +71,22 @@ async function cacheExercises(exercises: Exercise[]): Promise<void> {
 
   // Traduz instruções antes de cachear (só acontece uma vez por exercício)
   const withTranslations = await Promise.all(
-    exercises.map(async (e) => ({
-      id:                e.id,
-      name:              e.name,
-      body_part:         e.bodyPart,
-      target:            e.target,
-      equipment:         e.equipment,
-      gif_url:           e.gifUrl || null,
-      secondary_muscles: e.secondaryMuscles,
-      instructions:      await translateInstructions(e.instructions),
-    }))
+    exercises.map(async (e) => {
+      const [translatedName, translatedInstructions] = await Promise.all([
+        translateText(e.name),
+        translateInstructions(e.instructions),
+      ]);
+      return {
+        id:                e.id,
+        name:              translatedName,
+        body_part:         e.bodyPart,
+        target:            e.target,
+        equipment:         e.equipment,
+        gif_url:           e.gifUrl || null,
+        secondary_muscles: e.secondaryMuscles,
+        instructions:      translatedInstructions,
+      };
+    })
   );
 
   await supabase.from('exercises').upsert(withTranslations, { onConflict: 'id' });
