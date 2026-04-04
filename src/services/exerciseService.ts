@@ -66,10 +66,9 @@ async function fetchFromApi(endpoint: string): Promise<Exercise[]> {
   return items.map(mapApiExercise);
 }
 
-async function cacheExercises(exercises: Exercise[]): Promise<void> {
-  if (!exercises.length) return;
+async function cacheExercises(exercises: Exercise[]): Promise<Exercise[]> {
+  if (!exercises.length) return [];
 
-  // Traduz instruções antes de cachear (só acontece uma vez por exercício)
   const withTranslations = await Promise.all(
     exercises.map(async (e) => {
       const [translatedName, translatedInstructions] = await Promise.all([
@@ -90,6 +89,17 @@ async function cacheExercises(exercises: Exercise[]): Promise<void> {
   );
 
   await supabase.from('exercises').upsert(withTranslations, { onConflict: 'id' });
+
+  return withTranslations.map(r => ({
+    id:               r.id,
+    name:             r.name,
+    bodyPart:         r.body_part,
+    target:           exercises.find(e => e.id === r.id)?.target ?? '',
+    equipment:        exercises.find(e => e.id === r.id)?.equipment ?? '',
+    gifUrl:           r.gif_url ?? '',
+    secondaryMuscles: r.secondary_muscles,
+    instructions:     r.instructions,
+  }));
 }
 
 function mapDbRow(row: Record<string, unknown>): Exercise {
@@ -119,8 +129,7 @@ export async function searchExercises(query: string): Promise<Exercise[]> {
   const results = await fetchFromApi(
     `/exercises/name/${encodeURIComponent(query.toLowerCase())}?limit=20&offset=0`
   );
-  await cacheExercises(results);
-  return results;
+  return await cacheExercises(results);
 }
 
 export async function getExercisesByCategory(category: string): Promise<Exercise[]> {
@@ -143,6 +152,6 @@ export async function getExercisesByCategory(category: string): Promise<Exercise
     );
     allResults.push(...results);
   }
-  await cacheExercises(allResults);
-  return allResults.slice(0, 20);
+  const translated = await cacheExercises(allResults);
+  return translated.slice(0, 20);
 }
