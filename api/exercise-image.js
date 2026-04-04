@@ -6,7 +6,7 @@ export default function handler(req, res) {
 
   const options = {
     hostname: 'exercisedb.p.rapidapi.com',
-    path: `/exercises/image/${id}`,
+    path: `/image?exerciseId=${id}&resolution=1080`,
     method: 'GET',
     headers: {
       'x-rapidapi-key':  process.env.VITE_RAPIDAPI_KEY,
@@ -16,7 +16,7 @@ export default function handler(req, res) {
 
   return new Promise((resolve) => {
     const request = https.request(options, (response) => {
-      console.log(`[proxy] status: ${response.statusCode}`);
+      console.log(`[proxy] status: ${response.statusCode}, content-type: ${response.headers['content-type']}`);
 
       if (response.statusCode !== 200) {
         res.status(response.statusCode).end();
