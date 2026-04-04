@@ -22,13 +22,19 @@ const BODY_PART_CATEGORY_MAP: Record<string, string[]> = {
 };
 
 function mapApiExercise(raw: Record<string, unknown>): Exercise {
+  const id = String(raw.id);
+  const gifUrl = raw.gifUrl
+    ? String(raw.gifUrl)
+    : raw.gif_url
+      ? String(raw.gif_url)
+      : `https://v2.exercisedb.io/image/${id}`;
   return {
-    id:               String(raw.id),
+    id,
     name:             String(raw.name),
     bodyPart:         String(raw.bodyPart || raw.body_part || ''),
     target:           String(raw.target || ''),
     equipment:        String(raw.equipment || ''),
-    gifUrl:           String(raw.gifUrl || raw.gif_url || raw.animationUrl || ''),
+    gifUrl,
     secondaryMuscles: Array.isArray(raw.secondaryMuscles) ? raw.secondaryMuscles.map(String) : [],
     instructions:     Array.isArray(raw.instructions) ? raw.instructions.map(String) : [],
   };
