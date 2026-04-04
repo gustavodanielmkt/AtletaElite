@@ -6,13 +6,10 @@ export default async function handler(req, res) {
   }
 
   try {
-    const response = await fetch(decodeURIComponent(url), {
-      headers: {
-        'x-rapidapi-key':  process.env.VITE_RAPIDAPI_KEY,
-        'x-rapidapi-host': process.env.VITE_RAPIDAPI_HOST,
-        'User-Agent': 'Mozilla/5.0',
-      },
-    });
+    const decodedUrl = decodeURIComponent(url);
+
+    // Imagens do exercisedb são públicas — não enviar headers de auth
+    const response = await fetch(decodedUrl);
 
     if (!response.ok) return res.status(response.status).end();
 
