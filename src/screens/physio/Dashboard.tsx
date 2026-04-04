@@ -3,7 +3,7 @@ import { Activity, Bell, AlertCircle, LayoutDashboard, Users, BarChart, User, Lo
 import { supabase } from '../../lib/supabase';
 import { getPhysioDashboardStats, type PhysioDashboardStats } from '../../services/physioService';
 
-const APP_VERSION = '1.1.5';
+const APP_VERSION = '1.1.6';
 
 function generateInviteCode(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
