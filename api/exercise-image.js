@@ -1,22 +1,21 @@
 export default async function handler(req, res) {
-  const { url } = req.query;
+  const { id } = req.query;
 
-  if (!url) {
+  if (!id) {
     return res.status(400).end();
   }
 
   try {
-    const decodedUrl = decodeURIComponent(url);
+    const url = `https://exercisedb.p.rapidapi.com/exercises/image/${id}`;
 
-    const response = await fetch(decodedUrl, {
+    const response = await fetch(url, {
       headers: {
         'x-rapidapi-key':  process.env.VITE_RAPIDAPI_KEY,
         'x-rapidapi-host': process.env.VITE_RAPIDAPI_HOST,
-        'User-Agent': 'Mozilla/5.0',
       },
     });
 
-    console.log('Proxy fetch:', decodedUrl, '-> status:', response.status);
+    console.log('Proxy fetch:', url, '-> status:', response.status);
 
     if (!response.ok) return res.status(response.status).end();
 
