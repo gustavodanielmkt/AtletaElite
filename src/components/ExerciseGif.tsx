@@ -29,7 +29,7 @@ export default function ExerciseGif({ exerciseId, alt, className }: ExerciseGifP
         objectUrl = URL.createObjectURL(blob);
         setSrc(objectUrl);
       })
-      .catch(() => setSrc(''));
+      .catch(err => { console.error('[ExerciseGif] fetch failed:', err); setSrc(''); });
 
     return () => {
       if (objectUrl) URL.revokeObjectURL(objectUrl);
