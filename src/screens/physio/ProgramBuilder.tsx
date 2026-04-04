@@ -19,6 +19,9 @@ const TARGET_PT: Record<string, string> = {
   hamstrings: 'Isquiotibiais', lats: 'Latíssimo', 'levator scapulae': 'Elevador da Escápula',
   pectorals: 'Peitoral', quads: 'Quadríceps', 'serratus anterior': 'Serrátil',
   spine: 'Coluna', traps: 'Trapézio', triceps: 'Tríceps', 'upper back': 'Parte Superior das Costas',
+  quadriceps: 'Quadríceps', shoulders: 'Ombros', core: 'Core',
+  'hip flexors': 'Flexores do Quadril', obliques: 'Oblíquos', rhomboids: 'Romboides',
+  'lower back': 'Lombar', chest: 'Peito', neck: 'Pescoço',
 };
 
 const EQUIPMENT_PT: Record<string, string> = {
