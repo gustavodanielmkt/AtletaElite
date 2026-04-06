@@ -26,6 +26,17 @@ CREATE POLICY "Authenticated users can insert exercises"
     TO authenticated
     WITH CHECK (true);
 
+CREATE POLICY "Authenticated users can update exercises"
+    ON public.exercises FOR UPDATE
+    TO authenticated
+    USING (true)
+    WITH CHECK (true);
+
+CREATE POLICY "Authenticated users can delete exercises"
+    ON public.exercises FOR DELETE
+    TO authenticated
+    USING (true);
+
 -- Índices para busca
 CREATE INDEX IF NOT EXISTS exercises_name_idx ON public.exercises USING gin(to_tsvector('simple', name));
 CREATE INDEX IF NOT EXISTS exercises_body_part_idx ON public.exercises(body_part);

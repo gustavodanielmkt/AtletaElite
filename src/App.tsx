@@ -20,13 +20,26 @@ export default function App() {
   const [session, setSession] = useState<any>(null);
   const [authScreen, setAuthScreen] = useState<'login' | 'register'>('login');
   const [role, setRole] = useState<'athlete' | 'physio' | null>(null);
-  const [currentScreen, setCurrentScreen] = useState('athlete-dashboard');
-  const [selectedAthleteId, setSelectedAthleteId] = useState<string | undefined>(undefined);
+  const SCREENS_NO_PERSIST = ['onboarding', 'physio-onboarding'];
+
+  const [currentScreen, setCurrentScreen] = useState(() => {
+    const saved = sessionStorage.getItem('currentScreen');
+    return saved && !SCREENS_NO_PERSIST.includes(saved) ? saved : 'athlete-dashboard';
+  });
+  const [selectedAthleteId, setSelectedAthleteId] = useState<string | undefined>(
+    () => sessionStorage.getItem('selectedAthleteId') || undefined
+  );
   const [loading, setLoading] = useState(true);
 
   const navigate = (screen: string, athleteId?: string) => {
-    if (athleteId) setSelectedAthleteId(athleteId);
+    if (athleteId) {
+      setSelectedAthleteId(athleteId);
+      sessionStorage.setItem('selectedAthleteId', athleteId);
+    }
     setCurrentScreen(screen);
+    if (!SCREENS_NO_PERSIST.includes(screen)) {
+      sessionStorage.setItem('currentScreen', screen);
+    }
     window.scrollTo(0, 0);
   };
 
@@ -47,6 +60,8 @@ export default function App() {
         fetchProfile(session.user.id);
       } else {
         setRole(null);
+        sessionStorage.removeItem('currentScreen');
+        sessionStorage.removeItem('selectedAthleteId');
         setLoading(false);
       }
     });

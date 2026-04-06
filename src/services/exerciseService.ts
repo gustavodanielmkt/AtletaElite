@@ -21,22 +21,83 @@ const BODY_PART_CATEGORY_MAP: Record<string, string[]> = {
   recovery: ['back', 'lower legs', 'upper legs'],
 };
 
-async function translateText(text: string): Promise<string> {
+// ── Corruption cleanup ─────────────────────────────────────────
+let _cleanupDone = false;
+
+async function cleanupCorruptedRows(): Promise<void> {
+  if (_cleanupDone) return;
+  _cleanupDone = true;
+
   try {
-    const res = await fetch(
-      `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|pt-BR`
-    );
-    const data = await res.json();
-    return data.responseData?.translatedText || text;
-  } catch {
-    return text;
+    await supabase
+      .from('exercises')
+      .delete()
+      .ilike('name', 'MYMEMORY WARNING%');
+
+    const { data: all } = await supabase
+      .from('exercises')
+      .select('id, instructions');
+
+    if (all && all.length > 0) {
+      const corruptedIds = all
+        .filter((row: { id: string; instructions: string[] }) => {
+          if (!Array.isArray(row.instructions)) return false;
+          return row.instructions.some(
+            (instr: string) => typeof instr === 'string' && instr.startsWith('MYMEMORY WARNING')
+          );
+        })
+        .map((row: { id: string }) => row.id);
+
+      if (corruptedIds.length > 0) {
+        await supabase
+          .from('exercises')
+          .delete()
+          .in('id', corruptedIds);
+      }
+    }
+  } catch (err) {
+    console.warn('[exerciseService] Cleanup failed:', err);
   }
 }
 
-async function translateInstructions(instructions: string[]): Promise<string[]> {
-  const translated = await Promise.all(instructions.map(translateText));
-  return translated;
+// ── Gemini Translation ──────────────────────────────────────────
+// Calls our /api/translate serverless function (Gemini 2.0 Flash).
+// Returns translated name + instructions. Falls back to English on error.
+
+async function translateWithGemini(
+  name: string,
+  instructions: string[]
+): Promise<{ translatedName: string; translatedInstructions: string[] }> {
+  try {
+    const res = await fetch('/api/translate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, instructions }),
+    });
+
+    if (!res.ok) throw new Error(`translate API: ${res.status}`);
+
+    const data = await res.json();
+
+    const translatedName = data.translatedName || name;
+    const translatedInstructions =
+      Array.isArray(data.translatedInstructions) && data.translatedInstructions.length === instructions.length
+        ? data.translatedInstructions
+        : instructions;
+
+    // Safety: reject if Gemini returned garbage
+    if (translatedName.length > 200 || translatedName.includes('```')) {
+      return { translatedName: name, translatedInstructions: instructions };
+    }
+
+    return { translatedName, translatedInstructions };
+  } catch (err) {
+    console.warn('[exerciseService] Translation failed, using English:', err);
+    return { translatedName: name, translatedInstructions: instructions };
+  }
 }
+
+// ── API helpers ─────────────────────────────────────────────────
 
 function mapApiExercise(raw: Record<string, unknown>): Exercise {
   const id = String(raw.id);
@@ -66,40 +127,67 @@ async function fetchFromApi(endpoint: string): Promise<Exercise[]> {
   return items.map(mapApiExercise);
 }
 
+// ── Cache layer with Gemini translation ─────────────────────────
+// Translates name + instructions via Gemini on first fetch, then
+// caches in Supabase. Name format: "Nome PT (Original EN)"
+
 async function cacheExercises(exercises: Exercise[]): Promise<Exercise[]> {
   if (!exercises.length) return [];
 
-  const withTranslations = await Promise.all(
-    exercises.map(async (e) => {
-      const [translatedName, translatedInstructions] = await Promise.all([
-        translateText(e.name),
-        translateInstructions(e.instructions),
-      ]);
-      return {
-        id:                e.id,
-        name:              translatedName,
-        body_part:         e.bodyPart,
-        target:            e.target,
-        equipment:         e.equipment,
-        gif_url:           e.gifUrl || null,
-        secondary_muscles: e.secondaryMuscles,
-        instructions:      translatedInstructions,
-      };
-    })
-  );
+  // Translate in batches of 3 to avoid overwhelming the API
+  const BATCH_SIZE = 3;
+  const translated: Exercise[] = [];
 
-  await supabase.from('exercises').upsert(withTranslations, { onConflict: 'id' });
+  for (let i = 0; i < exercises.length; i += BATCH_SIZE) {
+    const batch = exercises.slice(i, i + BATCH_SIZE);
+    const batchResults = await Promise.all(
+      batch.map(async (e) => {
+        const { translatedName, translatedInstructions } = await translateWithGemini(
+          e.name,
+          e.instructions
+        );
 
-  return withTranslations.map(r => ({
-    id:               r.id,
-    name:             r.name,
-    bodyPart:         r.body_part,
-    target:           exercises.find(e => e.id === r.id)?.target ?? '',
-    equipment:        exercises.find(e => e.id === r.id)?.equipment ?? '',
-    gifUrl:           r.gif_url ?? '',
-    secondaryMuscles: r.secondary_muscles,
-    instructions:     r.instructions,
-  }));
+        // Format: "Nome PT (Original EN)" — only if translation is different
+        const displayName =
+          translatedName.toLowerCase() !== e.name.toLowerCase()
+            ? `${translatedName} (${e.name})`
+            : e.name;
+
+        return {
+          exercise: e,
+          row: {
+            id:                e.id,
+            name:              displayName,
+            body_part:         e.bodyPart,
+            target:            e.target,
+            equipment:         e.equipment,
+            gif_url:           e.gifUrl || null,
+            secondary_muscles: e.secondaryMuscles,
+            instructions:      translatedInstructions,
+          },
+        };
+      })
+    );
+    translated.push(
+      ...batchResults.map((r) => ({
+        id:               r.row.id,
+        name:             r.row.name,
+        bodyPart:         r.row.body_part,
+        target:           r.exercise.target,
+        equipment:        r.exercise.equipment,
+        gifUrl:           r.row.gif_url ?? '',
+        secondaryMuscles: r.row.secondary_muscles,
+        instructions:     r.row.instructions,
+      }))
+    );
+
+    // Upsert this batch
+    await supabase
+      .from('exercises')
+      .upsert(batchResults.map((r) => r.row), { onConflict: 'id' });
+  }
+
+  return translated;
 }
 
 function mapDbRow(row: Record<string, unknown>): Exercise {
@@ -115,8 +203,12 @@ function mapDbRow(row: Record<string, unknown>): Exercise {
   };
 }
 
+// ── Public API ──────────────────────────────────────────────────
+
 export async function searchExercises(query: string): Promise<Exercise[]> {
   if (!query || query.length < 2) return [];
+
+  await cleanupCorruptedRows();
 
   const { data: cached } = await supabase
     .from('exercises')
@@ -136,6 +228,8 @@ export async function getExercisesByCategory(category: string): Promise<Exercise
   const bodyParts = BODY_PART_CATEGORY_MAP[category] ?? [];
   if (!bodyParts.length) return [];
 
+  await cleanupCorruptedRows();
+
   const { data: cached } = await supabase
     .from('exercises')
     .select('*')
@@ -152,6 +246,5 @@ export async function getExercisesByCategory(category: string): Promise<Exercise
     );
     allResults.push(...results);
   }
-  const translated = await cacheExercises(allResults);
-  return translated.slice(0, 20);
+  return (await cacheExercises(allResults)).slice(0, 20);
 }
