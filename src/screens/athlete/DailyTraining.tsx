@@ -24,7 +24,9 @@ export default function DailyTraining({ navigate }: { navigate: (screen: string)
   useEffect(() => {
     CATEGORIES.forEach(({ key }) => {
       if (key === 'warmup') return; // already loading as active
-      getExercisesByCategory(key)
+      getExercisesByCategory(key, (updated) => {
+        localCache.current.set(key, updated);
+      })
         .then((results) => { localCache.current.set(key, results); })
         .catch(() => {});
     });
@@ -45,7 +47,16 @@ export default function DailyTraining({ navigate }: { navigate: (screen: string)
     setError(null);
     setExercises([]);
 
-    getExercisesByCategory(activeCategory)
+    getExercisesByCategory(
+      activeCategory,
+      // Called when background translation finishes — swaps English for Portuguese
+      (updated) => {
+        if (!cancelled) {
+          localCache.current.set(activeCategory, updated);
+          setExercises(updated);
+        }
+      }
+    )
       .then((results) => {
         if (!cancelled) {
           localCache.current.set(activeCategory, results);

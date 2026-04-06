@@ -127,67 +127,57 @@ async function fetchFromApi(endpoint: string): Promise<Exercise[]> {
   return items.map(mapApiExercise);
 }
 
-// ── Cache layer with Gemini translation ─────────────────────────
-// Translates name + instructions via Gemini on first fetch, then
-// caches in Supabase. Name format: "Nome PT (Original EN)"
+// ── Helpers ─────────────────────────────────────────────────────
 
-async function cacheExercises(exercises: Exercise[]): Promise<Exercise[]> {
-  if (!exercises.length) return [];
+function toDbRow(e: Exercise) {
+  return {
+    id:                e.id,
+    name:              e.name,
+    body_part:         e.bodyPart,
+    target:            e.target,
+    equipment:         e.equipment,
+    gif_url:           e.gifUrl || null,
+    secondary_muscles: e.secondaryMuscles,
+    instructions:      e.instructions,
+  };
+}
 
-  // Translate in batches of 3 to avoid overwhelming the API
-  const BATCH_SIZE = 3;
-  const translated: Exercise[] = [];
+// Save exercises to Supabase immediately, without translation.
+async function saveToSupabase(exercises: Exercise[]): Promise<void> {
+  if (!exercises.length) return;
+  await supabase
+    .from('exercises')
+    .upsert(exercises.map(toDbRow), { onConflict: 'id' });
+}
 
-  for (let i = 0; i < exercises.length; i += BATCH_SIZE) {
-    const batch = exercises.slice(i, i + BATCH_SIZE);
-    const batchResults = await Promise.all(
-      batch.map(async (e) => {
+// Translate all exercises in parallel (not sequential batches).
+// Updates memory cache and Supabase when done, then calls onDone.
+async function translateAndUpdate(
+  exercises: Exercise[],
+  category: string,
+  onDone?: (updated: Exercise[]) => void
+): Promise<void> {
+  try {
+    const translated = await Promise.all(
+      exercises.map(async (e) => {
         const { translatedName, translatedInstructions } = await translateWithGemini(
           e.name,
           e.instructions
         );
-
-        // Format: "Nome PT (Original EN)" — only if translation is different
         const displayName =
           translatedName.toLowerCase() !== e.name.toLowerCase()
             ? `${translatedName} (${e.name})`
             : e.name;
-
-        return {
-          exercise: e,
-          row: {
-            id:                e.id,
-            name:              displayName,
-            body_part:         e.bodyPart,
-            target:            e.target,
-            equipment:         e.equipment,
-            gif_url:           e.gifUrl || null,
-            secondary_muscles: e.secondaryMuscles,
-            instructions:      translatedInstructions,
-          },
-        };
+        return { ...e, name: displayName, instructions: translatedInstructions };
       })
     );
-    translated.push(
-      ...batchResults.map((r) => ({
-        id:               r.row.id,
-        name:             r.row.name,
-        bodyPart:         r.row.body_part,
-        target:           r.exercise.target,
-        equipment:        r.exercise.equipment,
-        gifUrl:           r.row.gif_url ?? '',
-        secondaryMuscles: r.row.secondary_muscles,
-        instructions:     r.row.instructions,
-      }))
-    );
 
-    // Upsert this batch
-    await supabase
-      .from('exercises')
-      .upsert(batchResults.map((r) => r.row), { onConflict: 'id' });
+    await saveToSupabase(translated);
+    _categoryCache.set(category, translated);
+    onDone?.(translated);
+  } catch (err) {
+    console.warn('[exerciseService] Background translation failed:', err);
   }
-
-  return translated;
 }
 
 function mapDbRow(row: Record<string, unknown>): Exercise {
@@ -204,8 +194,6 @@ function mapDbRow(row: Record<string, unknown>): Exercise {
 }
 
 // ── In-memory cache ─────────────────────────────────────────────
-// Persists for the lifetime of the app session. Switching back to a
-// previously loaded category is instant — no network round-trip.
 const _categoryCache = new Map<string, Exercise[]>();
 
 // ── Public API ──────────────────────────────────────────────────
@@ -223,14 +211,22 @@ export async function searchExercises(query: string): Promise<Exercise[]> {
 
   if (cached && cached.length > 0) return cached.map(mapDbRow);
 
+  // Fetch, save in English, translate in background
   const results = await fetchFromApi(
     `/exercises/name/${encodeURIComponent(query.toLowerCase())}?limit=20&offset=0`
   );
-  return await cacheExercises(results);
+  await saveToSupabase(results);
+  translateAndUpdate(results, `search:${query}`);
+  return results;
 }
 
-export async function getExercisesByCategory(category: string): Promise<Exercise[]> {
-  // 1. Memory cache — instant return, no network at all
+// onTranslated: optional callback fired when background translation finishes.
+// The component uses this to swap English names for Portuguese without a reload.
+export async function getExercisesByCategory(
+  category: string,
+  onTranslated?: (updated: Exercise[]) => void
+): Promise<Exercise[]> {
+  // 1. Memory cache — instant, no network
   if (_categoryCache.has(category)) return _categoryCache.get(category)!;
 
   const bodyParts = BODY_PART_CATEGORY_MAP[category] ?? [];
@@ -238,50 +234,52 @@ export async function getExercisesByCategory(category: string): Promise<Exercise
 
   await cleanupCorruptedRows();
 
+  // 2. Supabase cache — no gif_url filter (was the bug causing cache misses)
   const { data: cached } = await supabase
     .from('exercises')
     .select('*')
     .in('body_part', bodyParts)
-    .not('gif_url', 'is', null)
     .limit(20);
 
-  // 2. Supabase has enough data — return immediately and cache in memory
   if (cached && cached.length >= 10) {
     const results = cached.map(mapDbRow);
     _categoryCache.set(category, results);
     return results;
   }
 
-  // 3. Partial Supabase data — return what we have right away, refresh in background
+  // 3. Partial Supabase data — return immediately, fetch full set in background
   if (cached && cached.length > 0) {
     const partial = cached.map(mapDbRow);
     _categoryCache.set(category, partial);
 
-    // Fire-and-forget: fetch full set and update memory cache silently
     (async () => {
       try {
-        const fetched = await Promise.all(
+        const fetched = (await Promise.all(
           bodyParts.map((part) =>
             fetchFromApi(`/exercises/bodyPart/${encodeURIComponent(part)}?limit=10&offset=0`)
           )
-        );
-        const fresh = await cacheExercises(fetched.flat());
-        _categoryCache.set(category, fresh.slice(0, 20));
-      } catch {
-        // keep partial data in cache, no visible error
-      }
+        )).flat().slice(0, 20);
+        await saveToSupabase(fetched);
+        translateAndUpdate(fetched, category, onTranslated);
+      } catch { /* keep partial */ }
     })();
 
     return partial;
   }
 
-  // 4. No cache at all — fetch all bodyParts in parallel (was sequential before)
-  const fetched = await Promise.all(
+  // 4. No cache at all — fetch all bodyParts in parallel, save in English immediately,
+  //    return to user (~2-3s), then translate in background.
+  const fetched = (await Promise.all(
     bodyParts.map((part) =>
       fetchFromApi(`/exercises/bodyPart/${encodeURIComponent(part)}?limit=10&offset=0`)
     )
-  );
-  const results = (await cacheExercises(fetched.flat())).slice(0, 20);
-  _categoryCache.set(category, results);
-  return results;
+  )).flat().slice(0, 20);
+
+  await saveToSupabase(fetched);
+  _categoryCache.set(category, fetched);
+
+  // Translate in background — updates Supabase + memory cache when done
+  translateAndUpdate(fetched, category, onTranslated);
+
+  return fetched;
 }
