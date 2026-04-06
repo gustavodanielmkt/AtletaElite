@@ -1,77 +1,52 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Calendar, PlayCircle, Lock, Home, Dumbbell, LineChart, User, Loader2, AlertCircle } from 'lucide-react';
-import { getExercisesByCategory, Exercise } from '../../services/exerciseService';
+import React, { useState, useEffect } from 'react';
+import { ArrowLeft, Calendar, PlayCircle, Home, Dumbbell, LineChart, User, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { getActiveProgram, type Program, type ProgramExercise } from '../../services/exerciseService';
+import { supabase } from '../../lib/supabase';
 
-const CATEGORIES = [
+const PHASES = [
   { key: 'warmup',   label: 'Aquecimento' },
   { key: 'mobility', label: 'Mobilidade' },
   { key: 'strength', label: 'Força' },
   { key: 'recovery', label: 'Recuperação' },
-];
+] as const;
+
+type Phase = typeof PHASES[number]['key'];
+
+function gifSrc(id: string): string {
+  return `/api/exercise-image?id=${id}`;
+}
 
 export default function DailyTraining({ navigate }: { navigate: (screen: string) => void }) {
-  const [activeCategory, setActiveCategory] = useState('warmup');
-  const [exercises, setExercises] = useState<Exercise[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [program, setProgram] = useState<Program | null>(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [activePhase, setActivePhase] = useState<Phase>('warmup');
   const [completed, setCompleted] = useState<Set<string>>(new Set());
 
-  // Local ref cache: if a category was already fetched this session,
-  // switching to it is instant (no loading flash).
-  const localCache = useRef<Map<string, Exercise[]>>(new Map());
-
-  // Preload all other categories in background when the screen mounts
   useEffect(() => {
-    CATEGORIES.forEach(({ key }) => {
-      if (key === 'warmup') return; // already loading as active
-      getExercisesByCategory(key, (updated) => {
-        localCache.current.set(key, updated);
-      })
-        .then((results) => { localCache.current.set(key, results); })
-        .catch(() => {});
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session?.user) { setLoading(false); return; }
+      getActiveProgram(session.user.id)
+        .then((p) => {
+          setProgram(p);
+          if (p) {
+            // Auto-select first phase that has exercises
+            const firstPhase = PHASES.find(ph => p.exercises.some((e: ProgramExercise) => e.phase === ph.key));
+            if (firstPhase) setActivePhase(firstPhase.key);
+          }
+        })
+        .catch(() => setError('Não foi possível carregar o programa de treino.'))
+        .finally(() => setLoading(false));
     });
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
-  useEffect(() => {
-    // If already in local cache, show immediately — no spinner
-    const cached = localCache.current.get(activeCategory);
-    if (cached) {
-      setExercises(cached);
-      setLoading(false);
-      setError(null);
-      return;
-    }
+  const availablePhases = PHASES.filter(ph =>
+    program?.exercises.some((e: ProgramExercise) => e.phase === ph.key)
+  );
 
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    setExercises([]);
-
-    getExercisesByCategory(
-      activeCategory,
-      // Called when background translation finishes — swaps English for Portuguese
-      (updated) => {
-        if (!cancelled) {
-          localCache.current.set(activeCategory, updated);
-          setExercises(updated);
-        }
-      }
-    )
-      .then((results) => {
-        if (!cancelled) {
-          localCache.current.set(activeCategory, results);
-          setExercises(results);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setError('Não foi possível carregar os exercícios. Verifique sua conexão.');
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-
-    return () => { cancelled = true; };
-  }, [activeCategory]);
+  const activeExercises: ProgramExercise[] = (program?.exercises ?? []).filter(
+    (e: ProgramExercise) => e.phase === activePhase
+  );
 
   const toggleCompleted = (id: string) => {
     setCompleted((prev: Set<string>) => {
@@ -87,117 +62,131 @@ export default function DailyTraining({ navigate }: { navigate: (screen: string)
         <div className="flex items-center p-4 justify-between">
           <button onClick={() => navigate('athlete-dashboard')} className="flex items-center gap-3">
             <ArrowLeft size={24} className="text-slate-400 cursor-pointer" />
-            <h1 className="text-xl font-bold tracking-tight">Plano de Treino Diário</h1>
+            <div>
+              <h1 className="text-xl font-bold tracking-tight leading-tight">Plano de Treino</h1>
+              {program && <p className="text-[10px] text-primary uppercase tracking-widest font-bold">{program.name}</p>}
+            </div>
           </button>
           <button className="bg-slate-800 p-2 rounded-full text-slate-300">
             <Calendar size={20} />
           </button>
         </div>
-        <div className="flex overflow-x-auto hide-scrollbar px-4 gap-6 pb-2">
-          {CATEGORIES.map((cat) => (
-            <button
-              key={cat.key}
-              onClick={() => setActiveCategory(cat.key)}
-              className={`flex flex-col items-center justify-center border-b-2 ${
-                activeCategory === cat.key
-                  ? 'border-primary text-primary'
-                  : 'border-transparent text-slate-500'
-              } pb-3 pt-2 whitespace-nowrap transition-colors`}
-            >
-              <p className="text-sm font-bold uppercase tracking-wider">{cat.label}</p>
-            </button>
-          ))}
-        </div>
-      </header>
 
-      <main className="flex-1 px-4 py-6">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-bold">
-            {CATEGORIES.find((c) => c.key === activeCategory)?.label}
-          </h2>
-          {exercises.length > 0 && (
-            <span className="text-xs font-medium bg-primary/10 text-primary px-2 py-1 rounded-full">
-              {completed.size}/{exercises.length} Concluído
-            </span>
-          )}
-        </div>
-
-        {loading && (
-          <div className="flex flex-col items-center justify-center py-20 gap-3 text-slate-500">
-            <Loader2 size={32} className="animate-spin text-primary" />
-            <p className="text-sm font-medium">Carregando exercícios...</p>
-          </div>
-        )}
-
-        {error && !loading && (
-          <div className="flex flex-col items-center justify-center py-20 gap-3 text-slate-500">
-            <AlertCircle size={32} className="text-red-400" />
-            <p className="text-sm font-medium text-center">{error}</p>
-            <button
-              onClick={() => setActiveCategory(activeCategory)}
-              className="text-xs font-bold text-primary border border-primary/30 px-4 py-2 rounded-lg"
-            >
-              Tentar novamente
-            </button>
-          </div>
-        )}
-
-        {!loading && !error && exercises.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-20 gap-3 text-slate-500">
-            <Lock size={32} />
-            <p className="text-sm font-medium">Nenhum exercício encontrado nesta categoria.</p>
-          </div>
-        )}
-
-        {!loading && !error && exercises.length > 0 && (
-          <div className="space-y-4">
-            {exercises.map((ex: Exercise) => {
-              const done = completed.has(ex.id);
+        {/* Phase tabs — only phases with exercises */}
+        {availablePhases.length > 0 && (
+          <div className="flex overflow-x-auto hide-scrollbar px-4 gap-6 pb-2">
+            {availablePhases.map((ph) => {
+              const phExercises = program!.exercises.filter((e: ProgramExercise) => e.phase === ph.key);
+              const doneCount = phExercises.filter((e: ProgramExercise) => completed.has(e.programExerciseId)).length;
               return (
-                <div
-                  key={ex.id}
-                  className={`bg-slate-900 border rounded-xl p-4 flex gap-4 items-center transition-opacity ${
-                    done ? 'opacity-60 border-slate-700' : 'border-slate-800'
+                <button
+                  key={ph.key}
+                  onClick={() => setActivePhase(ph.key)}
+                  className={`flex flex-col items-center justify-center border-b-2 pb-3 pt-2 whitespace-nowrap transition-colors ${
+                    activePhase === ph.key
+                      ? 'border-primary text-primary'
+                      : 'border-transparent text-slate-500'
                   }`}
                 >
-                  <div className="w-20 h-20 rounded-lg overflow-hidden flex-shrink-0 relative bg-slate-800">
-                    {ex.gifUrl ? (
-                      <img
-                        src={ex.gifUrl}
-                        alt={ex.name}
-                        className={`w-full h-full object-cover ${done ? 'grayscale' : ''}`}
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-slate-600">
-                        <Dumbbell size={28} />
-                      </div>
-                    )}
-                    {!done && (
-                      <div className="absolute inset-0 flex items-center justify-center bg-black/20">
-                        <PlayCircle size={24} className="text-white" />
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className={`text-base font-bold leading-tight ${done ? 'line-through text-slate-500' : ''}`}>
-                      {ex.name}
-                    </p>
-                    <p className="text-slate-400 text-xs mt-1 capitalize">{ex.target} · {ex.equipment}</p>
-                  </div>
-                  <button
-                    onClick={() => toggleCompleted(ex.id)}
-                    className={`flex-shrink-0 flex min-w-[84px] cursor-pointer items-center justify-center rounded-lg h-8 px-4 text-xs font-bold transition-all ${
-                      done
-                        ? 'bg-slate-700 text-slate-400'
-                        : 'bg-primary text-white shadow-lg shadow-primary/20'
-                    }`}
-                  >
-                    {done ? 'Desfazer' : 'Concluir'}
-                  </button>
-                </div>
+                  <p className="text-sm font-bold uppercase tracking-wider">{ph.label}</p>
+                  <p className="text-[10px] font-medium mt-0.5 opacity-70">{doneCount}/{phExercises.length}</p>
+                </button>
               );
             })}
           </div>
+        )}
+      </header>
+
+      <main className="flex-1 px-4 py-6">
+        {/* Loading */}
+        {loading && (
+          <div className="flex flex-col items-center justify-center py-20 gap-3 text-slate-500">
+            <Loader2 size={32} className="animate-spin text-primary" />
+            <p className="text-sm font-medium">Carregando programa...</p>
+          </div>
+        )}
+
+        {/* Error */}
+        {error && !loading && (
+          <div className="flex flex-col items-center justify-center py-20 gap-3">
+            <AlertCircle size={32} className="text-red-400" />
+            <p className="text-sm font-medium text-center text-slate-400">{error}</p>
+          </div>
+        )}
+
+        {/* No program yet */}
+        {!loading && !error && !program && (
+          <div className="flex flex-col items-center justify-center py-20 gap-4 text-slate-500">
+            <Dumbbell size={40} className="text-slate-700" />
+            <div className="text-center">
+              <p className="text-base font-bold text-slate-300">Nenhum programa atribuído</p>
+              <p className="text-sm mt-1">Aguarde seu fisioterapeuta criar seu plano de treino.</p>
+            </div>
+          </div>
+        )}
+
+        {/* Exercise list */}
+        {!loading && !error && activeExercises.length > 0 && (
+          <>
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-lg font-bold">
+                {PHASES.find(p => p.key === activePhase)?.label}
+              </h2>
+              <span className="text-xs font-medium bg-primary/10 text-primary px-2 py-1 rounded-full">
+                {activeExercises.filter(e => completed.has(e.programExerciseId)).length}/{activeExercises.length} Concluído
+              </span>
+            </div>
+
+            <div className="space-y-4">
+              {activeExercises.map((ex: ProgramExercise) => {
+                const done = completed.has(ex.programExerciseId);
+                return (
+                  <div
+                    key={ex.programExerciseId}
+                    className={`bg-slate-900 border rounded-xl p-4 flex gap-4 items-center transition-opacity ${
+                      done ? 'opacity-60 border-slate-700' : 'border-slate-800'
+                    }`}
+                  >
+                    <div className="w-20 h-20 rounded-lg overflow-hidden flex-shrink-0 relative bg-slate-800">
+                      <img
+                        src={gifSrc(ex.id)}
+                        alt={ex.name}
+                        className={`w-full h-full object-cover ${done ? 'grayscale' : ''}`}
+                      />
+                      {!done && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                          <PlayCircle size={24} className="text-white" />
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-base font-bold leading-tight ${done ? 'line-through text-slate-500' : ''}`}>
+                        {ex.name}
+                      </p>
+                      <p className="text-slate-400 text-xs mt-0.5 capitalize">{ex.target} · {ex.equipment}</p>
+                      <div className="flex gap-3 mt-2">
+                        <span className="text-[11px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full">{ex.sets} séries</span>
+                        <span className="text-[11px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full">{ex.reps} reps</span>
+                        <span className="text-[11px] font-bold text-slate-400 bg-slate-800 px-2 py-0.5 rounded-full">{ex.rest}</span>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => toggleCompleted(ex.programExerciseId)}
+                      className={`flex-shrink-0 flex flex-col items-center justify-center w-12 h-12 rounded-xl border transition-all ${
+                        done
+                          ? 'bg-primary/10 border-primary/30 text-primary'
+                          : 'border-slate-700 text-slate-600 hover:border-primary hover:text-primary'
+                      }`}
+                    >
+                      <CheckCircle2 size={22} />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </>
         )}
       </main>
 

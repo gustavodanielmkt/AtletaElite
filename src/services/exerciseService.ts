@@ -196,6 +196,30 @@ function mapDbRow(row: Record<string, unknown>): Exercise {
 // ── In-memory cache ─────────────────────────────────────────────
 const _categoryCache = new Map<string, Exercise[]>();
 
+export const ALL_BODY_PARTS = [
+  'back', 'cardio', 'chest', 'lower arms', 'lower legs',
+  'neck', 'shoulders', 'upper arms', 'upper legs', 'waist',
+] as const;
+
+export type BodyPart = typeof ALL_BODY_PARTS[number];
+
+export interface ProgramExercise extends Exercise {
+  programExerciseId: string;
+  phase: 'warmup' | 'mobility' | 'strength' | 'recovery';
+  sets: number;
+  reps: number;
+  rest: string;
+  sortOrder: number;
+}
+
+export interface Program {
+  id: string;
+  name: string;
+  athleteId: string;
+  physioId: string;
+  exercises: ProgramExercise[];
+}
+
 // ── Public API ──────────────────────────────────────────────────
 
 export async function searchExercises(query: string): Promise<Exercise[]> {
@@ -218,6 +242,149 @@ export async function searchExercises(query: string): Promise<Exercise[]> {
   await saveToSupabase(results);
   translateAndUpdate(results, `search:${query}`);
   return results;
+}
+
+// Fetch exercises by a single API body part (for ProgramBuilder browse tabs).
+export async function getExercisesByBodyPart(
+  bodyPart: string,
+  onTranslated?: (updated: Exercise[]) => void
+): Promise<Exercise[]> {
+  const cacheKey = `bodypart:${bodyPart}`;
+
+  if (_categoryCache.has(cacheKey)) return _categoryCache.get(cacheKey)!;
+
+  await cleanupCorruptedRows();
+
+  const { data: cached } = await supabase
+    .from('exercises')
+    .select('*')
+    .eq('body_part', bodyPart)
+    .limit(20);
+
+  if (cached && cached.length >= 10) {
+    const results = cached.map(mapDbRow);
+    _categoryCache.set(cacheKey, results);
+    return results;
+  }
+
+  if (cached && cached.length > 0) {
+    const partial = cached.map(mapDbRow);
+    _categoryCache.set(cacheKey, partial);
+    (async () => {
+      try {
+        const fetched = await fetchFromApi(
+          `/exercises/bodyPart/${encodeURIComponent(bodyPart)}?limit=20&offset=0`
+        );
+        await saveToSupabase(fetched);
+        translateAndUpdate(fetched, cacheKey, onTranslated);
+      } catch { /* keep partial */ }
+    })();
+    return partial;
+  }
+
+  const fetched = (await fetchFromApi(
+    `/exercises/bodyPart/${encodeURIComponent(bodyPart)}?limit=20&offset=0`
+  )).slice(0, 20);
+
+  await saveToSupabase(fetched);
+  _categoryCache.set(cacheKey, fetched);
+  translateAndUpdate(fetched, cacheKey, onTranslated);
+  return fetched;
+}
+
+// Save a new program with its exercises to Supabase.
+export async function saveProgram(
+  physioId: string,
+  athleteId: string,
+  name: string,
+  exercises: Array<{
+    exerciseId: string;
+    phase: 'warmup' | 'mobility' | 'strength' | 'recovery';
+    sets: number;
+    reps: number;
+    rest: string;
+    sortOrder: number;
+  }>
+): Promise<{ programId: string } | { error: string }> {
+  const { data: program, error: progErr } = await supabase
+    .from('programs')
+    .insert({ physio_id: physioId, athlete_id: athleteId, name })
+    .select('id')
+    .single();
+
+  if (progErr || !program) return { error: progErr?.message ?? 'Erro ao salvar programa.' };
+
+  const rows = exercises.map((e) => ({
+    program_id: program.id,
+    exercise_id: e.exerciseId,
+    phase:       e.phase,
+    sets:        e.sets,
+    reps:        e.reps,
+    rest:        e.rest,
+    sort_order:  e.sortOrder,
+  }));
+
+  const { error: exErr } = await supabase.from('program_exercises').insert(rows);
+  if (exErr) return { error: exErr.message };
+
+  return { programId: program.id };
+}
+
+// Fetch the most recent program assigned to an athlete, with full exercise data.
+export async function getActiveProgram(athleteId: string): Promise<Program | null> {
+  const { data: program, error } = await supabase
+    .from('programs')
+    .select('id, name, athlete_id, physio_id')
+    .eq('athlete_id', athleteId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .single();
+
+  if (error || !program) return null;
+
+  const { data: rows } = await supabase
+    .from('program_exercises')
+    .select(`
+      id,
+      phase,
+      sets,
+      reps,
+      rest,
+      sort_order,
+      exercises (
+        id, name, body_part, target, equipment,
+        gif_url, secondary_muscles, instructions
+      )
+    `)
+    .eq('program_id', program.id)
+    .order('sort_order');
+
+  const exercises: ProgramExercise[] = (rows ?? [])
+    .filter((r: any) => r.exercises)
+    .map((r: any) => ({
+      programExerciseId: r.id,
+      phase:             r.phase,
+      sets:              r.sets ?? 3,
+      reps:              r.reps ?? 12,
+      rest:              r.rest ?? '30s',
+      sortOrder:         r.sort_order,
+      id:                r.exercises.id,
+      name:              r.exercises.name,
+      bodyPart:          r.exercises.body_part,
+      target:            r.exercises.target,
+      equipment:         r.exercises.equipment,
+      gifUrl:            r.exercises.gif_url ?? '',
+      secondaryMuscles:  r.exercises.secondary_muscles ?? [],
+      instructions:      r.exercises.instructions ?? [],
+    }));
+
+  return {
+    id:        program.id,
+    name:      program.name,
+    athleteId: program.athlete_id,
+    physioId:  program.physio_id,
+    exercises,
+  };
 }
 
 // onTranslated: optional callback fired when background translation finishes.

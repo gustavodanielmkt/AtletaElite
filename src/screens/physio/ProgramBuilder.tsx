@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, Search, GripVertical, PlayCircle, PlusCircle, Edit, Dumbbell, LineChart, User, X, Loader2 } from 'lucide-react';
-import { searchExercises, getExercisesByCategory, type Exercise } from '../../services/exerciseService';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { ArrowLeft, Search, GripVertical, PlayCircle, PlusCircle, Edit, Dumbbell, LineChart, User, X, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
+import { searchExercises, getExercisesByBodyPart, saveProgram, ALL_BODY_PARTS, type Exercise } from '../../services/exerciseService';
+import { supabase } from '../../lib/supabase';
 
 function gifSrc(id: string): string {
   return `/api/exercise-image?id=${id}`;
@@ -35,22 +36,24 @@ const EQUIPMENT_PT: Record<string, string> = {
   weighted: 'Com Peso', wheel: 'Roda',
 };
 
-function pt(map: Record<string, string>, key: string): string {
-  return map[key?.toLowerCase()] ?? key;
-}
-
-const CATEGORIES = [
+const PHASES = [
   { key: 'warmup',   label: 'Aquecimento' },
   { key: 'mobility', label: 'Mobilidade' },
   { key: 'strength', label: 'Força' },
   { key: 'recovery', label: 'Recuperação' },
-];
+] as const;
+
+type Phase = typeof PHASES[number]['key'];
+
+function pt(map: Record<string, string>, key: string): string {
+  return map[key?.toLowerCase()] ?? key;
+}
 
 interface SelectedExercise extends Exercise {
-  sets?: number;
-  reps?: number;
-  rest?: string;
-  duration?: string;
+  phase: Phase;
+  sets: number;
+  reps: number;
+  rest: string;
 }
 
 function useDebounce(value: string, delay: number) {
@@ -63,7 +66,7 @@ function useDebounce(value: string, delay: number) {
 }
 
 export default function ProgramBuilder({ navigate }: { navigate: (screen: string) => void }) {
-  const [activeCategory, setActiveCategory] = useState('warmup');
+  const [activeBodyPart, setActiveBodyPart] = useState<string>('chest');
   const [query, setQuery] = useState('');
   const debouncedQuery = useDebounce(query, 400);
 
@@ -73,22 +76,66 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
 
   const [selected, setSelected] = useState<SelectedExercise[]>([]);
   const [previewExercise, setPreviewExercise] = useState<Exercise | null>(null);
+  const [pendingPhase, setPendingPhase] = useState<Phase>('strength');
 
-  // Carrega exercícios da categoria ativa
+  const [programName, setProgramName] = useState('');
+  const [athleteId, setAthleteId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+
+  const localCache = useRef<Map<string, Exercise[]>>(new Map());
+
+  // Load physio's linked athlete
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session?.user) return;
+      supabase
+        .from('profiles')
+        .select('id')
+        .eq('physio_id', session.user.id)
+        .eq('role', 'athlete')
+        .limit(1)
+        .single()
+        .then(({ data }) => { if (data) setAthleteId(data.id); });
+    });
+  }, []);
+
+  // Load exercises for active body part
   useEffect(() => {
     if (debouncedQuery) return;
-    setLoading(true);
-    getExercisesByCategory(activeCategory)
-      .then(setBrowseExercises)
-      .finally(() => setLoading(false));
-  }, [activeCategory, debouncedQuery]);
 
-  // Busca por query
+    const cached = localCache.current.get(activeBodyPart);
+    if (cached) { setBrowseExercises(cached); return; }
+
+    setLoading(true);
+    getExercisesByBodyPart(
+      activeBodyPart,
+      (updated) => {
+        localCache.current.set(activeBodyPart, updated);
+        setBrowseExercises(updated);
+      }
+    )
+      .then((results) => {
+        localCache.current.set(activeBodyPart, results);
+        setBrowseExercises(results);
+      })
+      .finally(() => setLoading(false));
+  }, [activeBodyPart, debouncedQuery]);
+
+  // Preload other body parts in background
   useEffect(() => {
-    if (!debouncedQuery) {
-      setSearchResults([]);
-      return;
-    }
+    ALL_BODY_PARTS.forEach((bp) => {
+      if (bp === activeBodyPart) return;
+      getExercisesByBodyPart(bp, (updated) => { localCache.current.set(bp, updated); })
+        .then((results) => { localCache.current.set(bp, results); })
+        .catch(() => {});
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Search
+  useEffect(() => {
+    if (!debouncedQuery) { setSearchResults([]); return; }
     setLoading(true);
     searchExercises(debouncedQuery)
       .then(setSearchResults)
@@ -99,16 +146,46 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
 
   const addExercise = useCallback((exercise: Exercise) => {
     if (selected.find(s => s.id === exercise.id)) return;
-    setSelected(prev => [...prev, { ...exercise, sets: 3, reps: 12, rest: '30s' }]);
+    setSelected(prev => [...prev, { ...exercise, phase: pendingPhase, sets: 3, reps: 12, rest: '30s' }]);
     setPreviewExercise(null);
-  }, [selected]);
+  }, [selected, pendingPhase]);
 
-  const removeExercise = (id: string) => {
-    setSelected(prev => prev.filter(e => e.id !== id));
-  };
+  const removeExercise = (id: string) => setSelected(prev => prev.filter(e => e.id !== id));
 
   const updateField = (id: string, field: keyof SelectedExercise, value: string | number) => {
     setSelected(prev => prev.map(e => e.id === id ? { ...e, [field]: value } : e));
+  };
+
+  const handleSave = async () => {
+    if (!programName.trim()) { setSaveError('Dê um nome ao programa.'); return; }
+    if (!athleteId) { setSaveError('Nenhum atleta vinculado a esta conta.'); return; }
+    if (selected.length === 0) { setSaveError('Adicione ao menos um exercício.'); return; }
+
+    setSaving(true);
+    setSaveError(null);
+
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user) { setSaveError('Sessão expirada.'); setSaving(false); return; }
+
+    const result = await saveProgram(
+      session.user.id,
+      athleteId,
+      programName.trim(),
+      selected.map((e, i) => ({
+        exerciseId: e.id,
+        phase:      e.phase,
+        sets:       e.sets,
+        reps:       e.reps,
+        rest:       e.rest,
+        sortOrder:  i,
+      }))
+    );
+
+    setSaving(false);
+    if ('error' in result) { setSaveError(result.error); return; }
+
+    setSaveSuccess(true);
+    setTimeout(() => navigate('physio-dashboard'), 1500);
   };
 
   return (
@@ -117,15 +194,34 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
         <div className="flex items-center p-4 justify-between max-w-2xl mx-auto w-full">
           <div className="flex items-center gap-3">
             <button onClick={() => navigate('physio-dashboard')}><ArrowLeft size={24} className="text-slate-400 cursor-pointer" /></button>
-            <h2 className="text-xl font-bold leading-tight tracking-tight">Novo Programa</h2>
+            <input
+              type="text"
+              value={programName}
+              onChange={e => setProgramName(e.target.value)}
+              placeholder="Nome do programa..."
+              className="bg-transparent text-lg font-bold outline-none placeholder-slate-600 w-40"
+            />
           </div>
-          <button className="bg-[#ccff00] text-background-dark px-6 py-1.5 rounded-full text-sm font-bold hover:opacity-90 transition-opacity">
-            Salvar
+          <button
+            onClick={handleSave}
+            disabled={saving || saveSuccess}
+            className="bg-[#ccff00] text-background-dark px-6 py-1.5 rounded-full text-sm font-bold hover:opacity-90 transition-opacity disabled:opacity-60 flex items-center gap-2"
+          >
+            {saving ? <Loader2 size={14} className="animate-spin" /> : saveSuccess ? <CheckCircle2 size={14} /> : null}
+            {saveSuccess ? 'Salvo!' : 'Salvar'}
           </button>
         </div>
       </header>
 
       <main className="flex-1 max-w-2xl mx-auto w-full pb-24">
+        {saveError && (
+          <div className="mx-4 mt-3 flex items-center gap-2 bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3">
+            <AlertCircle size={16} className="text-red-400 shrink-0" />
+            <p className="text-sm text-red-400">{saveError}</p>
+            <button onClick={() => setSaveError(null)} className="ml-auto text-red-400"><X size={14} /></button>
+          </div>
+        )}
+
         {/* Search */}
         <div className="px-4 py-4">
           <div className="relative group">
@@ -150,21 +246,21 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
           </div>
         </div>
 
-        {/* Category tabs */}
+        {/* Body part tabs */}
         {!debouncedQuery && (
           <div className="pb-2">
             <div className="flex overflow-x-auto px-4 gap-6 hide-scrollbar">
-              {CATEGORIES.map(cat => (
+              {ALL_BODY_PARTS.map(bp => (
                 <button
-                  key={cat.key}
-                  onClick={() => setActiveCategory(cat.key)}
+                  key={bp}
+                  onClick={() => setActiveBodyPart(bp)}
                   className={`flex flex-col items-center justify-center border-b-2 pb-3 pt-2 whitespace-nowrap transition-colors ${
-                    activeCategory === cat.key
+                    activeBodyPart === bp
                       ? 'border-[#ccff00] text-[#ccff00]'
                       : 'border-transparent text-slate-500 hover:text-slate-300'
                   }`}
                 >
-                  <p className="text-sm font-bold uppercase tracking-wider">{cat.label}</p>
+                  <p className="text-sm font-bold uppercase tracking-wider">{pt(BODY_PART_PT, bp)}</p>
                 </button>
               ))}
             </div>
@@ -175,7 +271,7 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
         {displayExercises.length > 0 && (
           <div className="px-4 py-2">
             <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-3">
-              {debouncedQuery ? `Resultados para "${debouncedQuery}"` : CATEGORIES.find(c => c.key === activeCategory)?.label}
+              {debouncedQuery ? `Resultados para "${debouncedQuery}"` : pt(BODY_PART_PT, activeBodyPart)}
             </h3>
             <div className="grid grid-cols-2 gap-3">
               {displayExercises.map(exercise => (
@@ -189,6 +285,11 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
                     <div className="absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity">
                       <PlayCircle size={32} className="text-white" />
                     </div>
+                    {selected.find(s => s.id === exercise.id) && (
+                      <div className="absolute top-2 right-2 bg-[#ccff00] rounded-full p-0.5">
+                        <CheckCircle2 size={14} className="text-slate-950" />
+                      </div>
+                    )}
                   </div>
                   <div className="p-2">
                     <p className="text-xs font-bold text-slate-100 capitalize truncate">{exercise.name}</p>
@@ -236,7 +337,25 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
                       </div>
                       <div className="flex-1">
                         <h4 className="font-bold text-slate-100 capitalize">{exercise.name}</h4>
-                        <p className="text-xs text-[#ccff00] font-medium mb-3 uppercase tracking-tighter">{pt(TARGET_PT, exercise.target)} • {pt(EQUIPMENT_PT, exercise.equipment)}</p>
+                        <p className="text-xs text-[#ccff00] font-medium mb-3 uppercase tracking-tighter">{pt(TARGET_PT, exercise.target)} · {pt(EQUIPMENT_PT, exercise.equipment)}</p>
+
+                        {/* Phase selector */}
+                        <div className="flex gap-1.5 flex-wrap mb-3">
+                          {PHASES.map(p => (
+                            <button
+                              key={p.key}
+                              onClick={() => updateField(exercise.id, 'phase', p.key)}
+                              className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full border transition-all ${
+                                exercise.phase === p.key
+                                  ? 'bg-[#ccff00] text-slate-950 border-[#ccff00]'
+                                  : 'border-slate-700 text-slate-500 hover:border-slate-500'
+                              }`}
+                            >
+                              {p.label}
+                            </button>
+                          ))}
+                        </div>
+
                         <div className="grid grid-cols-3 gap-2">
                           <div className="flex flex-col">
                             <span className="text-[10px] text-slate-500 uppercase font-bold">Séries</span>
@@ -276,7 +395,10 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
         )}
 
         <div className="px-4 mt-4">
-          <button className="w-full py-8 border-2 border-dashed border-slate-800 rounded-xl flex flex-col items-center justify-center gap-2 text-slate-500 hover:border-[#ccff00] hover:text-[#ccff00] transition-all group">
+          <button
+            onClick={() => setPreviewExercise(browseExercises[0] ?? null)}
+            className="w-full py-8 border-2 border-dashed border-slate-800 rounded-xl flex flex-col items-center justify-center gap-2 text-slate-500 hover:border-[#ccff00] hover:text-[#ccff00] transition-all group"
+          >
             <PlusCircle size={32} className="group-hover:scale-110 transition-transform" />
             <span className="text-sm font-bold uppercase">Adicionar Exercício</span>
           </button>
@@ -295,7 +417,26 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
             </div>
             <div className="p-5">
               <h3 className="text-xl font-bold capitalize mb-1">{previewExercise.name}</h3>
-              <p className="text-[#ccff00] text-sm uppercase tracking-wider mb-4">{pt(TARGET_PT, previewExercise.target)} • {pt(EQUIPMENT_PT, previewExercise.equipment)}</p>
+              <p className="text-[#ccff00] text-sm uppercase tracking-wider mb-3">{pt(TARGET_PT, previewExercise.target)} · {pt(EQUIPMENT_PT, previewExercise.equipment)}</p>
+
+              {/* Phase selector in modal */}
+              <div className="flex gap-2 flex-wrap mb-4">
+                <p className="text-xs text-slate-500 w-full uppercase font-bold tracking-wider">Adicionar como:</p>
+                {PHASES.map(p => (
+                  <button
+                    key={p.key}
+                    onClick={() => setPendingPhase(p.key)}
+                    className={`text-xs font-bold uppercase tracking-wider px-3 py-1.5 rounded-full border transition-all ${
+                      pendingPhase === p.key
+                        ? 'bg-[#ccff00] text-slate-950 border-[#ccff00]'
+                        : 'border-slate-700 text-slate-400 hover:border-slate-500'
+                    }`}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+
               {previewExercise.secondaryMuscles.length > 0 && (
                 <p className="text-xs text-slate-400 mb-4">
                   Músculos secundários: {previewExercise.secondaryMuscles.map(m => pt(TARGET_PT, m)).join(', ')}
@@ -317,7 +458,9 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
                 disabled={!!selected.find(s => s.id === previewExercise.id)}
                 className="w-full py-4 bg-[#ccff00] text-background-dark font-bold rounded-xl hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                {selected.find(s => s.id === previewExercise.id) ? 'Já adicionado' : 'Adicionar ao Programa'}
+                {selected.find(s => s.id === previewExercise.id)
+                  ? 'Já adicionado'
+                  : `Adicionar como ${PHASES.find(p => p.key === pendingPhase)?.label}`}
               </button>
             </div>
           </div>
@@ -338,7 +481,7 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
             <LineChart size={24} />
             <span className="text-[10px] font-bold uppercase tracking-widest">Progresso</span>
           </button>
-          <button className="flex flex-col items-center gap-1 text-slate-400">
+          <button onClick={() => navigate('athlete-profile')} className="flex flex-col items-center gap-1 text-slate-400">
             <User size={24} />
             <span className="text-[10px] font-bold uppercase tracking-widest">Perfil</span>
           </button>
