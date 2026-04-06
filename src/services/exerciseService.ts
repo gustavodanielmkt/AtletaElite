@@ -203,6 +203,11 @@ function mapDbRow(row: Record<string, unknown>): Exercise {
   };
 }
 
+// ── In-memory cache ─────────────────────────────────────────────
+// Persists for the lifetime of the app session. Switching back to a
+// previously loaded category is instant — no network round-trip.
+const _categoryCache = new Map<string, Exercise[]>();
+
 // ── Public API ──────────────────────────────────────────────────
 
 export async function searchExercises(query: string): Promise<Exercise[]> {
@@ -225,6 +230,9 @@ export async function searchExercises(query: string): Promise<Exercise[]> {
 }
 
 export async function getExercisesByCategory(category: string): Promise<Exercise[]> {
+  // 1. Memory cache — instant return, no network at all
+  if (_categoryCache.has(category)) return _categoryCache.get(category)!;
+
   const bodyParts = BODY_PART_CATEGORY_MAP[category] ?? [];
   if (!bodyParts.length) return [];
 
@@ -237,14 +245,43 @@ export async function getExercisesByCategory(category: string): Promise<Exercise
     .not('gif_url', 'is', null)
     .limit(20);
 
-  if (cached && cached.length >= 10) return cached.map(mapDbRow);
-
-  const allResults: Exercise[] = [];
-  for (const part of bodyParts) {
-    const results = await fetchFromApi(
-      `/exercises/bodyPart/${encodeURIComponent(part)}?limit=10&offset=0`
-    );
-    allResults.push(...results);
+  // 2. Supabase has enough data — return immediately and cache in memory
+  if (cached && cached.length >= 10) {
+    const results = cached.map(mapDbRow);
+    _categoryCache.set(category, results);
+    return results;
   }
-  return (await cacheExercises(allResults)).slice(0, 20);
+
+  // 3. Partial Supabase data — return what we have right away, refresh in background
+  if (cached && cached.length > 0) {
+    const partial = cached.map(mapDbRow);
+    _categoryCache.set(category, partial);
+
+    // Fire-and-forget: fetch full set and update memory cache silently
+    (async () => {
+      try {
+        const fetched = await Promise.all(
+          bodyParts.map((part) =>
+            fetchFromApi(`/exercises/bodyPart/${encodeURIComponent(part)}?limit=10&offset=0`)
+          )
+        );
+        const fresh = await cacheExercises(fetched.flat());
+        _categoryCache.set(category, fresh.slice(0, 20));
+      } catch {
+        // keep partial data in cache, no visible error
+      }
+    })();
+
+    return partial;
+  }
+
+  // 4. No cache at all — fetch all bodyParts in parallel (was sequential before)
+  const fetched = await Promise.all(
+    bodyParts.map((part) =>
+      fetchFromApi(`/exercises/bodyPart/${encodeURIComponent(part)}?limit=10&offset=0`)
+    )
+  );
+  const results = (await cacheExercises(fetched.flat())).slice(0, 20);
+  _categoryCache.set(category, results);
+  return results;
 }

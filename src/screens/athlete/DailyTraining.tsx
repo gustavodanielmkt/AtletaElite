@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, Calendar, PlayCircle, Lock, Home, Dumbbell, LineChart, User, Loader2, AlertCircle } from 'lucide-react';
 import { getExercisesByCategory, Exercise } from '../../services/exerciseService';
 
@@ -16,7 +16,30 @@ export default function DailyTraining({ navigate }: { navigate: (screen: string)
   const [error, setError] = useState<string | null>(null);
   const [completed, setCompleted] = useState<Set<string>>(new Set());
 
+  // Local ref cache: if a category was already fetched this session,
+  // switching to it is instant (no loading flash).
+  const localCache = useRef<Map<string, Exercise[]>>(new Map());
+
+  // Preload all other categories in background when the screen mounts
   useEffect(() => {
+    CATEGORIES.forEach(({ key }) => {
+      if (key === 'warmup') return; // already loading as active
+      getExercisesByCategory(key)
+        .then((results) => { localCache.current.set(key, results); })
+        .catch(() => {});
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    // If already in local cache, show immediately — no spinner
+    const cached = localCache.current.get(activeCategory);
+    if (cached) {
+      setExercises(cached);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
     let cancelled = false;
     setLoading(true);
     setError(null);
@@ -24,7 +47,10 @@ export default function DailyTraining({ navigate }: { navigate: (screen: string)
 
     getExercisesByCategory(activeCategory)
       .then((results) => {
-        if (!cancelled) setExercises(results);
+        if (!cancelled) {
+          localCache.current.set(activeCategory, results);
+          setExercises(results);
+        }
       })
       .catch(() => {
         if (!cancelled) setError('Não foi possível carregar os exercícios. Verifique sua conexão.');
