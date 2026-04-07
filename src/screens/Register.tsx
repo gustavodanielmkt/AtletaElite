@@ -85,7 +85,7 @@ export default function Register({
                     <div className="size-16 bg-primary/10 rounded-2xl flex items-center justify-center border border-primary/20 mb-4 shadow-[0_0_30px_rgba(16,185,129,0.2)]">
                         <Target className="text-primary" size={32} />
                     </div>
-                    <h1 className="text-2xl font-black italic uppercase tracking-tighter bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent">Atleta Elite</h1>
+                    <h1 className="text-2xl font-black italic uppercase tracking-tighter bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent pr-1">Atleta Elite</h1>
                     <p className="text-slate-500 text-xs font-bold uppercase tracking-[0.2em] mt-2">
                         {step === 1 && "Crie sua conta"}
                         {step === 2 && "Selecione seu Perfil"}
