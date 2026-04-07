@@ -123,7 +123,7 @@ export default function Login({
 
                 <div className="mt-12 flex flex-col items-center gap-4">
                     <p className="text-slate-600 text-[10px] font-black uppercase tracking-widest">Ainda não tem acesso?</p>
-                    <button onClick={onNavigateToRegister} type="button" className="text-primary text-[10px] font-black uppercase tracking-widest hover:brightness-125 transition-all">Criar Conta Modo Elite</button>
+                    <button onClick={onNavigateToRegister} type="button" className="text-primary text-[10px] font-black uppercase tracking-widest hover:brightness-125 transition-all">Criar Conta — Atleta ou Profissional</button>
                 </div>
             </motion.div>
         </div>
