@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { ArrowLeft, Search, GripVertical, PlayCircle, PlusCircle, Edit, Dumbbell, LineChart, User, X, Loader2, CheckCircle2, AlertCircle, ChevronLeft, ChevronRight, BookTemplate, Users } from 'lucide-react';
+import { ArrowLeft, Search, GripVertical, PlayCircle, PlusCircle, Edit, LineChart, User, X, Loader2, CheckCircle2, AlertCircle, ChevronLeft, ChevronRight, BookTemplate, Users, Info } from 'lucide-react';
 import {
   searchExercises, getExercisesByBodyPart, saveProgram, saveTemplate,
   getPhysioAthletes, getPhysioTemplates,
@@ -344,33 +344,65 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
         {/* Exercise browser */}
         {displayExercises.length > 0 && (
           <div className="px-4 py-2">
-            <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-3">
-              {debouncedQuery ? `Resultados para "${debouncedQuery}"` : pt(BODY_PART_PT, activeBodyPart)}
-            </h3>
-            <div className="grid grid-cols-2 gap-3">
-              {displayExercises.map(exercise => (
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest">
+                {debouncedQuery ? `Resultados para "${debouncedQuery}"` : pt(BODY_PART_PT, activeBodyPart)}
+              </h3>
+            </div>
+
+            {/* Phase chips — select once, tap to add */}
+            <div className="flex gap-2 flex-wrap mb-4">
+              <span className="text-[10px] text-slate-500 uppercase font-bold self-center">Fase:</span>
+              {PHASES.map(p => (
                 <button
-                  key={exercise.id}
-                  onClick={() => setPreviewExercise(exercise)}
-                  className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden text-left hover:border-[#ccff00]/50 transition-colors group"
+                  key={p.key}
+                  onClick={() => setPendingPhase(p.key)}
+                  className={`text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 rounded-full border transition-all ${
+                    pendingPhase === p.key
+                      ? 'bg-[#ccff00] text-slate-950 border-[#ccff00]'
+                      : 'border-slate-700 text-slate-500 hover:border-slate-400 hover:text-slate-300'
+                  }`}
                 >
-                  <div className="relative w-full aspect-square bg-slate-800">
-                    <img src={gifSrc(exercise.id)} alt={exercise.name} className="w-full h-full object-cover" />
-                    <div className="absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <PlayCircle size={32} className="text-white" />
-                    </div>
-                    {selected.find(s => s.id === exercise.id) && (
-                      <div className="absolute top-2 right-2 bg-[#ccff00] rounded-full p-0.5">
-                        <CheckCircle2 size={14} className="text-slate-950" />
-                      </div>
-                    )}
-                  </div>
-                  <div className="p-2">
-                    <p className="text-xs font-bold text-slate-100 capitalize truncate">{exercise.name}</p>
-                    <p className="text-[10px] text-[#ccff00] uppercase tracking-tight truncate">{pt(TARGET_PT, exercise.target)}</p>
-                  </div>
+                  {p.label}
                 </button>
               ))}
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              {displayExercises.map(exercise => {
+                const isAdded = !!selected.find(s => s.id === exercise.id);
+                return (
+                  <div key={exercise.id} className="relative">
+                    {/* Main tap — add or remove */}
+                    <button
+                      onClick={() => isAdded ? removeExercise(exercise.id) : addExercise(exercise)}
+                      className={`w-full bg-slate-900 border rounded-xl overflow-hidden text-left transition-all ${
+                        isAdded ? 'border-[#ccff00]/60' : 'border-slate-800 hover:border-[#ccff00]/40'
+                      }`}
+                    >
+                      <div className="relative w-full aspect-square bg-slate-800">
+                        <img src={gifSrc(exercise.id)} alt={exercise.name} className={`w-full h-full object-cover ${isAdded ? 'opacity-70' : ''}`} />
+                        {isAdded && (
+                          <div className="absolute inset-0 flex items-center justify-center bg-[#ccff00]/10">
+                            <CheckCircle2 size={36} className="text-[#ccff00] drop-shadow" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="p-2 pr-7">
+                        <p className="text-xs font-bold text-slate-100 capitalize truncate">{exercise.name}</p>
+                        <p className="text-[10px] text-[#ccff00] uppercase tracking-tight truncate">{pt(TARGET_PT, exercise.target)}</p>
+                      </div>
+                    </button>
+                    {/* Info button — opens read-only modal */}
+                    <button
+                      onClick={() => setPreviewExercise(exercise)}
+                      className="absolute bottom-2 right-2 text-slate-600 hover:text-slate-300 transition-colors"
+                    >
+                      <Info size={15} />
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
@@ -459,17 +491,6 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
             <div className="p-5">
               <h3 className="text-xl font-bold capitalize mb-1">{previewExercise.name}</h3>
               <p className="text-[#ccff00] text-sm uppercase tracking-wider mb-3">{pt(TARGET_PT, previewExercise.target)} · {pt(EQUIPMENT_PT, previewExercise.equipment)}</p>
-              <div className="flex gap-2 flex-wrap mb-4">
-                <p className="text-xs text-slate-500 w-full uppercase font-bold tracking-wider">Adicionar como:</p>
-                {PHASES.map(p => (
-                  <button key={p.key} onClick={() => setPendingPhase(p.key)}
-                    className={`text-xs font-bold uppercase tracking-wider px-3 py-1.5 rounded-full border transition-all ${
-                      pendingPhase === p.key ? 'bg-[#ccff00] text-slate-950 border-[#ccff00]' : 'border-slate-700 text-slate-400 hover:border-slate-500'
-                    }`}>
-                    {p.label}
-                  </button>
-                ))}
-              </div>
               {previewExercise.secondaryMuscles.length > 0 && (
                 <p className="text-xs text-slate-400 mb-4">Músculos secundários: {previewExercise.secondaryMuscles.map(m => pt(TARGET_PT, m)).join(', ')}</p>
               )}
@@ -485,11 +506,10 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
                 </div>
               )}
               <button
-                onClick={() => addExercise(previewExercise)}
-                disabled={!!selected.find(s => s.id === previewExercise.id)}
-                className="w-full py-4 bg-[#ccff00] text-background-dark font-bold rounded-xl hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
+                onClick={() => setPreviewExercise(null)}
+                className="w-full py-4 bg-slate-800 text-slate-300 font-bold rounded-xl hover:bg-slate-700 transition-colors"
               >
-                {selected.find(s => s.id === previewExercise.id) ? 'Já adicionado' : `Adicionar como ${PHASES.find(p => p.key === pendingPhase)?.label}`}
+                Fechar
               </button>
             </div>
           </div>
