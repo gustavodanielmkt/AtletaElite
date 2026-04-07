@@ -63,7 +63,7 @@ export default function Login({
                     <div className="size-20 bg-primary/10 rounded-3xl flex items-center justify-center border border-primary/20 mb-6 group hover:border-primary/50 transition-all duration-500 shadow-[0_0_30px_rgba(16,185,129,0.2)]">
                         <Target className="text-primary group-hover:scale-110 transition-transform" size={40} />
                     </div>
-                    <h1 className="text-3xl font-black italic uppercase tracking-tighter bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent">Atleta Elite</h1>
+                    <h1 className="text-3xl font-black italic uppercase tracking-tighter bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent pr-1">Atleta Elite</h1>
                     <p className="text-slate-500 text-sm font-bold uppercase tracking-[0.3em] mt-2">Acesse sua Central de Comando</p>
                 </div>
 
@@ -119,26 +119,6 @@ export default function Login({
                         )}
                     </button>
 
-                    {/* BYPASS MODE BUTTONS */}
-                    <div className="pt-8 border-t border-slate-900 flex flex-col items-center gap-4">
-                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-600">Ambiente de Desenvolvimento (Bypass)</p>
-                        <div className="flex gap-4 w-full">
-                            <button
-                                type="button"
-                                onClick={() => onLogin({ id: 'mock-1', email: 'atleta@teste.com' }, 'athlete')}
-                                className="flex-1 h-12 rounded-xl border border-slate-800 hover:border-primary/50 text-slate-400 hover:text-primary text-[10px] font-black uppercase tracking-widest transition-all"
-                            >
-                                Atleta (Bypass)
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => onLogin({ id: 'mock-2', email: 'fisio@teste.com' }, 'physio')}
-                                className="flex-1 h-12 rounded-xl border border-slate-800 hover:border-blue-500/50 text-slate-400 hover:text-blue-500 text-[10px] font-black uppercase tracking-widest transition-all"
-                            >
-                                Fisio (Bypass)
-                            </button>
-                        </div>
-                    </div>
                 </form>
 
                 <div className="mt-12 flex flex-col items-center gap-4">
