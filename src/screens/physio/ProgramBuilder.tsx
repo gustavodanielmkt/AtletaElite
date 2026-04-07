@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { ArrowLeft, Search, GripVertical, PlayCircle, PlusCircle, Edit, Dumbbell, LineChart, User, X, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Search, GripVertical, PlayCircle, PlusCircle, Edit, Dumbbell, LineChart, User, X, Loader2, CheckCircle2, AlertCircle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { searchExercises, getExercisesByBodyPart, saveProgram, ALL_BODY_PARTS, type Exercise } from '../../services/exerciseService';
 import { supabase } from '../../lib/supabase';
 
@@ -85,6 +85,13 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
   const [saveSuccess, setSaveSuccess] = useState(false);
 
   const localCache = useRef<Map<string, Exercise[]>>(new Map());
+  const tabsRef = useRef<HTMLDivElement>(null);
+
+  const scrollTabs = (dir: 'left' | 'right') => {
+    if (tabsRef.current) {
+      tabsRef.current.scrollBy({ left: dir === 'right' ? 120 : -120, behavior: 'smooth' });
+    }
+  };
 
   // Load physio's linked athlete
   useEffect(() => {
@@ -248,8 +255,11 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
 
         {/* Body part tabs */}
         {!debouncedQuery && (
-          <div className="pb-2">
-            <div className="flex overflow-x-auto px-4 gap-6 hide-scrollbar">
+          <div className="pb-2 relative">
+            <button onClick={() => scrollTabs('left')} className="absolute left-0 top-0 bottom-0 z-10 px-1 flex items-center bg-gradient-to-r from-background-dark to-transparent text-slate-500 hover:text-white transition-colors">
+              <ChevronLeft size={18} />
+            </button>
+            <div ref={tabsRef} className="flex overflow-x-auto px-8 gap-6 hide-scrollbar">
               {ALL_BODY_PARTS.map(bp => (
                 <button
                   key={bp}
@@ -264,6 +274,9 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
                 </button>
               ))}
             </div>
+            <button onClick={() => scrollTabs('right')} className="absolute right-0 top-0 bottom-0 z-10 px-1 flex items-center bg-gradient-to-l from-background-dark to-transparent text-slate-500 hover:text-white transition-colors">
+              <ChevronRight size={18} />
+            </button>
           </div>
         )}
 
