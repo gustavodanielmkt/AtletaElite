@@ -215,9 +215,16 @@ export interface ProgramExercise extends Exercise {
 export interface Program {
   id: string;
   name: string;
-  athleteId: string;
+  athleteId: string | null;
   physioId: string;
+  isTemplate: boolean;
   exercises: ProgramExercise[];
+}
+
+export interface Athlete {
+  id: string;
+  fullName: string;
+  avatarUrl: string | null;
 }
 
 // ── Public API ──────────────────────────────────────────────────
@@ -292,30 +299,18 @@ export async function getExercisesByBodyPart(
   return fetched;
 }
 
-// Save a new program with its exercises to Supabase.
-export async function saveProgram(
-  physioId: string,
-  athleteId: string,
-  name: string,
-  exercises: Array<{
-    exerciseId: string;
-    phase: 'warmup' | 'mobility' | 'strength' | 'recovery';
-    sets: number;
-    reps: number;
-    rest: string;
-    sortOrder: number;
-  }>
-): Promise<{ programId: string } | { error: string }> {
-  const { data: program, error: progErr } = await supabase
-    .from('programs')
-    .insert({ physio_id: physioId, athlete_id: athleteId, name })
-    .select('id')
-    .single();
+type ExerciseRow = {
+  exerciseId: string;
+  phase: 'warmup' | 'mobility' | 'strength' | 'recovery';
+  sets: number;
+  reps: number;
+  rest: string;
+  sortOrder: number;
+};
 
-  if (progErr || !program) return { error: progErr?.message ?? 'Erro ao salvar programa.' };
-
+async function insertProgramExercises(programId: string, exercises: ExerciseRow[]): Promise<{ error: string } | null> {
   const rows = exercises.map((e) => ({
-    program_id: program.id,
+    program_id:  programId,
     exercise_id: e.exerciseId,
     phase:       e.phase,
     sets:        e.sets,
@@ -323,18 +318,118 @@ export async function saveProgram(
     rest:        e.rest,
     sort_order:  e.sortOrder,
   }));
+  const { error } = await supabase.from('program_exercises').insert(rows);
+  return error ? { error: error.message } : null;
+}
 
-  const { error: exErr } = await supabase.from('program_exercises').insert(rows);
-  if (exErr) return { error: exErr.message };
+// Save a program assigned to an athlete.
+export async function saveProgram(
+  physioId: string,
+  athleteId: string,
+  name: string,
+  exercises: ExerciseRow[]
+): Promise<{ programId: string } | { error: string }> {
+  const { data: program, error: progErr } = await supabase
+    .from('programs')
+    .insert({ physio_id: physioId, athlete_id: athleteId, name, is_template: false })
+    .select('id')
+    .single();
+
+  if (progErr || !program) return { error: progErr?.message ?? 'Erro ao salvar programa.' };
+
+  const err = await insertProgramExercises(program.id, exercises);
+  if (err) return err;
 
   return { programId: program.id };
+}
+
+// Save a reusable template (no athlete).
+export async function saveTemplate(
+  physioId: string,
+  name: string,
+  exercises: ExerciseRow[]
+): Promise<{ programId: string } | { error: string }> {
+  const { data: program, error: progErr } = await supabase
+    .from('programs')
+    .insert({ physio_id: physioId, athlete_id: null, name, is_template: true })
+    .select('id')
+    .single();
+
+  if (progErr || !program) return { error: progErr?.message ?? 'Erro ao salvar modelo.' };
+
+  const err = await insertProgramExercises(program.id, exercises);
+  if (err) return err;
+
+  return { programId: program.id };
+}
+
+// List athletes linked to a physio.
+export async function getPhysioAthletes(physioId: string): Promise<Athlete[]> {
+  const { data } = await supabase
+    .from('profiles')
+    .select('id, full_name, avatar_url')
+    .eq('physio_id', physioId)
+    .eq('role', 'athlete')
+    .order('full_name');
+
+  return (data ?? []).map((r: any) => ({
+    id:        r.id,
+    fullName:  r.full_name ?? 'Atleta',
+    avatarUrl: r.avatar_url ?? null,
+  }));
+}
+
+// List reusable templates created by a physio.
+export async function getPhysioTemplates(physioId: string): Promise<Program[]> {
+  const { data: programs } = await supabase
+    .from('programs')
+    .select('id, name, physio_id, is_template')
+    .eq('physio_id', physioId)
+    .eq('is_template', true)
+    .order('created_at', { ascending: false });
+
+  if (!programs || programs.length === 0) return [];
+
+  const result: Program[] = await Promise.all(
+    programs.map(async (p: any) => {
+      const { data: rows } = await supabase
+        .from('program_exercises')
+        .select(`id, phase, sets, reps, rest, sort_order,
+          exercises(id, name, body_part, target, equipment, gif_url, secondary_muscles, instructions)`)
+        .eq('program_id', p.id)
+        .order('sort_order');
+
+      const exercises: ProgramExercise[] = (rows ?? [])
+        .filter((r: any) => r.exercises)
+        .map((r: any) => ({
+          programExerciseId: r.id,
+          phase:             r.phase,
+          sets:              r.sets ?? 3,
+          reps:              r.reps ?? 12,
+          rest:              r.rest ?? '30s',
+          sortOrder:         r.sort_order,
+          id:                r.exercises.id,
+          name:              r.exercises.name,
+          bodyPart:          r.exercises.body_part,
+          target:            r.exercises.target,
+          equipment:         r.exercises.equipment,
+          gifUrl:            r.exercises.gif_url ?? '',
+          secondaryMuscles:  r.exercises.secondary_muscles ?? [],
+          instructions:      r.exercises.instructions ?? [],
+        }));
+
+      return { id: p.id, name: p.name, athleteId: null, physioId: p.physio_id, isTemplate: true, exercises };
+    })
+  );
+
+  return result;
 }
 
 // Fetch the most recent program assigned to an athlete, with full exercise data.
 export async function getActiveProgram(athleteId: string): Promise<Program | null> {
   const { data: program, error } = await supabase
     .from('programs')
-    .select('id, name, athlete_id, physio_id')
+    .select('id, name, athlete_id, physio_id, is_template')
     .eq('athlete_id', athleteId)
     .order('created_at', { ascending: false })
     .limit(1)
@@ -379,10 +474,11 @@ export async function getActiveProgram(athleteId: string): Promise<Program | nul
     }));
 
   return {
-    id:        program.id,
-    name:      program.name,
-    athleteId: program.athlete_id,
-    physioId:  program.physio_id,
+    id:         program.id,
+    name:       program.name,
+    athleteId:  program.athlete_id,
+    physioId:   program.physio_id,
+    isTemplate: program.is_template ?? false,
     exercises,
   };
 }

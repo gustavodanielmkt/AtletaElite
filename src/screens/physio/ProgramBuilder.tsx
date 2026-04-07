@@ -1,6 +1,10 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { ArrowLeft, Search, GripVertical, PlayCircle, PlusCircle, Edit, Dumbbell, LineChart, User, X, Loader2, CheckCircle2, AlertCircle, ChevronLeft, ChevronRight } from 'lucide-react';
-import { searchExercises, getExercisesByBodyPart, saveProgram, ALL_BODY_PARTS, type Exercise } from '../../services/exerciseService';
+import { ArrowLeft, Search, GripVertical, PlayCircle, PlusCircle, Edit, Dumbbell, LineChart, User, X, Loader2, CheckCircle2, AlertCircle, ChevronLeft, ChevronRight, BookTemplate, Users } from 'lucide-react';
+import {
+  searchExercises, getExercisesByBodyPart, saveProgram, saveTemplate,
+  getPhysioAthletes, getPhysioTemplates,
+  ALL_BODY_PARTS, type Exercise, type Program, type Athlete,
+} from '../../services/exerciseService';
 import { supabase } from '../../lib/supabase';
 
 function gifSrc(id: string): string {
@@ -66,6 +70,7 @@ function useDebounce(value: string, delay: number) {
 }
 
 export default function ProgramBuilder({ navigate }: { navigate: (screen: string) => void }) {
+  const [physioId, setPhysioId] = useState<string | null>(null);
   const [activeBodyPart, setActiveBodyPart] = useState<string>('chest');
   const [query, setQuery] = useState('');
   const debouncedQuery = useDebounce(query, 400);
@@ -79,54 +84,47 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
   const [pendingPhase, setPendingPhase] = useState<Phase>('strength');
 
   const [programName, setProgramName] = useState('');
-  const [athleteId, setAthleteId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
+
+  // Athlete selector modal
+  const [athletes, setAthletes] = useState<Athlete[]>([]);
+  const [showAthleteModal, setShowAthleteModal] = useState(false);
+  const [loadingAthletes, setLoadingAthletes] = useState(false);
+
+  // Templates
+  const [templates, setTemplates] = useState<Program[]>([]);
+  const [showTemplates, setShowTemplates] = useState(false);
+  const [loadingTemplates, setLoadingTemplates] = useState(false);
+  const [savingTemplate, setSavingTemplate] = useState(false);
+  const [templateSuccess, setTemplateSuccess] = useState(false);
 
   const localCache = useRef<Map<string, Exercise[]>>(new Map());
   const tabsRef = useRef<HTMLDivElement>(null);
 
   const scrollTabs = (dir: 'left' | 'right') => {
-    if (tabsRef.current) {
-      tabsRef.current.scrollBy({ left: dir === 'right' ? 120 : -120, behavior: 'smooth' });
-    }
+    tabsRef.current?.scrollBy({ left: dir === 'right' ? 120 : -120, behavior: 'smooth' });
   };
 
-  // Load physio's linked athlete
+  // Load physio session
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session?.user) return;
-      supabase
-        .from('profiles')
-        .select('id')
-        .eq('physio_id', session.user.id)
-        .eq('role', 'athlete')
-        .limit(1)
-        .single()
-        .then(({ data }) => { if (data) setAthleteId(data.id); });
+      if (session?.user) setPhysioId(session.user.id);
     });
   }, []);
 
   // Load exercises for active body part
   useEffect(() => {
     if (debouncedQuery) return;
-
     const cached = localCache.current.get(activeBodyPart);
     if (cached) { setBrowseExercises(cached); return; }
-
     setLoading(true);
-    getExercisesByBodyPart(
-      activeBodyPart,
-      (updated) => {
-        localCache.current.set(activeBodyPart, updated);
-        setBrowseExercises(updated);
-      }
-    )
-      .then((results) => {
-        localCache.current.set(activeBodyPart, results);
-        setBrowseExercises(results);
-      })
+    getExercisesByBodyPart(activeBodyPart, (updated) => {
+      localCache.current.set(activeBodyPart, updated);
+      setBrowseExercises(updated);
+    })
+      .then((results) => { localCache.current.set(activeBodyPart, results); setBrowseExercises(results); })
       .finally(() => setLoading(false));
   }, [activeBodyPart, debouncedQuery]);
 
@@ -134,8 +132,8 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
   useEffect(() => {
     ALL_BODY_PARTS.forEach((bp) => {
       if (bp === activeBodyPart) return;
-      getExercisesByBodyPart(bp, (updated) => { localCache.current.set(bp, updated); })
-        .then((results) => { localCache.current.set(bp, results); })
+      getExercisesByBodyPart(bp, (u) => localCache.current.set(bp, u))
+        .then((r) => localCache.current.set(bp, r))
         .catch(() => {});
     });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -144,9 +142,7 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
   useEffect(() => {
     if (!debouncedQuery) { setSearchResults([]); return; }
     setLoading(true);
-    searchExercises(debouncedQuery)
-      .then(setSearchResults)
-      .finally(() => setLoading(false));
+    searchExercises(debouncedQuery).then(setSearchResults).finally(() => setLoading(false));
   }, [debouncedQuery]);
 
   const displayExercises = debouncedQuery ? searchResults : browseExercises;
@@ -163,60 +159,110 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
     setSelected(prev => prev.map(e => e.id === id ? { ...e, [field]: value } : e));
   };
 
-  const handleSave = async () => {
-    if (!programName.trim()) { setSaveError('Dê um nome ao programa.'); return; }
-    if (!athleteId) { setSaveError('Nenhum atleta vinculado a esta conta.'); return; }
-    if (selected.length === 0) { setSaveError('Adicione ao menos um exercício.'); return; }
+  const exerciseRows = () => selected.map((e, i) => ({
+    exerciseId: e.id, phase: e.phase, sets: e.sets, reps: e.reps, rest: e.rest, sortOrder: i,
+  }));
 
-    setSaving(true);
+  const validate = (): string | null => {
+    if (!programName.trim()) return 'Dê um nome ao programa.';
+    if (selected.length === 0) return 'Adicione ao menos um exercício.';
+    return null;
+  };
+
+  // Open athlete modal to assign program
+  const handleSaveClick = async () => {
+    const err = validate();
+    if (err) { setSaveError(err); return; }
     setSaveError(null);
+    setLoadingAthletes(true);
+    setShowAthleteModal(true);
+    if (physioId) {
+      const list = await getPhysioAthletes(physioId);
+      setAthletes(list);
+    }
+    setLoadingAthletes(false);
+  };
 
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.user) { setSaveError('Sessão expirada.'); setSaving(false); return; }
-
-    const result = await saveProgram(
-      session.user.id,
-      athleteId,
-      programName.trim(),
-      selected.map((e, i) => ({
-        exerciseId: e.id,
-        phase:      e.phase,
-        sets:       e.sets,
-        reps:       e.reps,
-        rest:       e.rest,
-        sortOrder:  i,
-      }))
-    );
-
+  // Confirm assignment to athlete
+  const handleAssign = async (athleteId: string) => {
+    if (!physioId) return;
+    setSaving(true);
+    setShowAthleteModal(false);
+    const result = await saveProgram(physioId, athleteId, programName.trim(), exerciseRows());
     setSaving(false);
     if ('error' in result) { setSaveError(result.error); return; }
-
     setSaveSuccess(true);
     setTimeout(() => navigate('physio-dashboard'), 1500);
+  };
+
+  // Save as reusable template
+  const handleSaveTemplate = async () => {
+    const err = validate();
+    if (err) { setSaveError(err); return; }
+    if (!physioId) return;
+    setSavingTemplate(true);
+    setSaveError(null);
+    const result = await saveTemplate(physioId, programName.trim(), exerciseRows());
+    setSavingTemplate(false);
+    if ('error' in result) { setSaveError(result.error); return; }
+    setTemplateSuccess(true);
+    setTimeout(() => setTemplateSuccess(false), 2000);
+  };
+
+  // Load templates list
+  const handleShowTemplates = async () => {
+    setShowTemplates(true);
+    setLoadingTemplates(true);
+    if (physioId) setTemplates(await getPhysioTemplates(physioId));
+    setLoadingTemplates(false);
+  };
+
+  // Load a template into the builder
+  const handleLoadTemplate = (template: Program) => {
+    setProgramName(template.name);
+    setSelected(template.exercises.map(e => ({
+      id: e.id, name: e.name, bodyPart: e.bodyPart, target: e.target,
+      equipment: e.equipment, gifUrl: e.gifUrl, secondaryMuscles: e.secondaryMuscles,
+      instructions: e.instructions, phase: e.phase, sets: e.sets, reps: e.reps, rest: e.rest,
+    })));
+    setShowTemplates(false);
   };
 
   return (
     <div className="min-h-screen flex flex-col pb-24">
       <header className="sticky top-0 z-50 bg-background-dark/80 backdrop-blur-md border-b border-slate-800">
-        <div className="flex items-center p-4 justify-between max-w-2xl mx-auto w-full">
-          <div className="flex items-center gap-3">
-            <button onClick={() => navigate('physio-dashboard')}><ArrowLeft size={24} className="text-slate-400 cursor-pointer" /></button>
+        <div className="flex items-center p-4 justify-between max-w-2xl mx-auto w-full gap-2">
+          <div className="flex items-center gap-3 min-w-0">
+            <button onClick={() => navigate('physio-dashboard')}><ArrowLeft size={24} className="text-slate-400 cursor-pointer shrink-0" /></button>
             <input
               type="text"
               value={programName}
               onChange={e => setProgramName(e.target.value)}
               placeholder="Nome do programa..."
-              className="bg-transparent text-lg font-bold outline-none placeholder-slate-600 w-40"
+              className="bg-transparent text-base font-bold outline-none placeholder-slate-600 min-w-0 w-36"
             />
           </div>
-          <button
-            onClick={handleSave}
-            disabled={saving || saveSuccess}
-            className="bg-[#ccff00] text-background-dark px-6 py-1.5 rounded-full text-sm font-bold hover:opacity-90 transition-opacity disabled:opacity-60 flex items-center gap-2"
-          >
-            {saving ? <Loader2 size={14} className="animate-spin" /> : saveSuccess ? <CheckCircle2 size={14} /> : null}
-            {saveSuccess ? 'Salvo!' : 'Salvar'}
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            {/* Save as template */}
+            <button
+              onClick={handleSaveTemplate}
+              disabled={savingTemplate || templateSuccess}
+              title="Salvar como modelo"
+              className="h-9 px-3 rounded-full border border-slate-700 text-slate-400 hover:border-[#ccff00] hover:text-[#ccff00] transition-all text-xs font-bold flex items-center gap-1.5 disabled:opacity-50"
+            >
+              {savingTemplate ? <Loader2 size={13} className="animate-spin" /> : templateSuccess ? <CheckCircle2 size={13} /> : <BookTemplate size={13} />}
+              <span className="hidden sm:inline">{templateSuccess ? 'Salvo!' : 'Modelo'}</span>
+            </button>
+            {/* Assign to athlete */}
+            <button
+              onClick={handleSaveClick}
+              disabled={saving || saveSuccess}
+              className="h-9 px-4 bg-[#ccff00] text-slate-950 rounded-full text-xs font-black flex items-center gap-1.5 hover:opacity-90 transition-opacity disabled:opacity-60"
+            >
+              {saving ? <Loader2 size={13} className="animate-spin" /> : saveSuccess ? <CheckCircle2 size={13} /> : <Users size={13} />}
+              {saveSuccess ? 'Atribuído!' : 'Atribuir'}
+            </button>
+          </div>
         </div>
       </header>
 
@@ -228,6 +274,21 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
             <button onClick={() => setSaveError(null)} className="ml-auto text-red-400"><X size={14} /></button>
           </div>
         )}
+
+        {/* Load template banner */}
+        <div className="px-4 pt-4">
+          <button
+            onClick={handleShowTemplates}
+            className="w-full flex items-center gap-3 bg-slate-900 border border-slate-800 hover:border-[#ccff00]/40 rounded-xl px-4 py-3 text-left transition-colors group"
+          >
+            <BookTemplate size={18} className="text-slate-500 group-hover:text-[#ccff00] transition-colors shrink-0" />
+            <div>
+              <p className="text-xs font-bold text-slate-300 uppercase tracking-wider">Carregar Modelo</p>
+              <p className="text-[10px] text-slate-600">Use um programa salvo anteriormente como base</p>
+            </div>
+            <ChevronRight size={16} className="ml-auto text-slate-600 group-hover:text-[#ccff00]" />
+          </button>
+        </div>
 
         {/* Search */}
         <div className="px-4 py-4">
@@ -331,71 +392,40 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
                   <div className="absolute left-2 top-1/2 -translate-y-1/2 cursor-grab active:cursor-grabbing text-slate-700">
                     <GripVertical size={20} />
                   </div>
-                  <button
-                    onClick={() => removeExercise(exercise.id)}
-                    className="absolute top-3 right-3 text-slate-600 hover:text-red-400 transition-colors"
-                  >
+                  <button onClick={() => removeExercise(exercise.id)} className="absolute top-3 right-3 text-slate-600 hover:text-red-400 transition-colors">
                     <X size={16} />
                   </button>
                   <div className="ml-6">
                     <div className="flex gap-4 items-start">
-                      <div
-                        className="w-20 h-20 rounded-lg overflow-hidden flex-shrink-0 relative cursor-pointer"
-                        onClick={() => setPreviewExercise(exercise)}
-                      >
+                      <div className="w-20 h-20 rounded-lg overflow-hidden flex-shrink-0 relative cursor-pointer" onClick={() => setPreviewExercise(exercise)}>
                         <img src={gifSrc(exercise.id)} alt={exercise.name} className="w-full h-full object-cover" />
-                        <div className="absolute inset-0 flex items-center justify-center bg-black/20">
-                          <PlayCircle size={24} className="text-white" />
-                        </div>
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/20"><PlayCircle size={24} className="text-white" /></div>
                       </div>
                       <div className="flex-1">
                         <h4 className="font-bold text-slate-100 capitalize">{exercise.name}</h4>
                         <p className="text-xs text-[#ccff00] font-medium mb-3 uppercase tracking-tighter">{pt(TARGET_PT, exercise.target)} · {pt(EQUIPMENT_PT, exercise.equipment)}</p>
-
-                        {/* Phase selector */}
                         <div className="flex gap-1.5 flex-wrap mb-3">
                           {PHASES.map(p => (
-                            <button
-                              key={p.key}
-                              onClick={() => updateField(exercise.id, 'phase', p.key)}
+                            <button key={p.key} onClick={() => updateField(exercise.id, 'phase', p.key)}
                               className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full border transition-all ${
-                                exercise.phase === p.key
-                                  ? 'bg-[#ccff00] text-slate-950 border-[#ccff00]'
-                                  : 'border-slate-700 text-slate-500 hover:border-slate-500'
-                              }`}
-                            >
+                                exercise.phase === p.key ? 'bg-[#ccff00] text-slate-950 border-[#ccff00]' : 'border-slate-700 text-slate-500 hover:border-slate-500'
+                              }`}>
                               {p.label}
                             </button>
                           ))}
                         </div>
-
                         <div className="grid grid-cols-3 gap-2">
                           <div className="flex flex-col">
                             <span className="text-[10px] text-slate-500 uppercase font-bold">Séries</span>
-                            <input
-                              type="number"
-                              value={exercise.sets}
-                              onChange={e => updateField(exercise.id, 'sets', Number(e.target.value))}
-                              className="bg-slate-800 border-none rounded-lg p-2 text-sm focus:ring-1 focus:ring-[#ccff00] outline-none text-white"
-                            />
+                            <input type="number" value={exercise.sets} onChange={e => updateField(exercise.id, 'sets', Number(e.target.value))} className="bg-slate-800 border-none rounded-lg p-2 text-sm focus:ring-1 focus:ring-[#ccff00] outline-none text-white" />
                           </div>
                           <div className="flex flex-col">
                             <span className="text-[10px] text-slate-500 uppercase font-bold">Reps</span>
-                            <input
-                              type="number"
-                              value={exercise.reps}
-                              onChange={e => updateField(exercise.id, 'reps', Number(e.target.value))}
-                              className="bg-slate-800 border-none rounded-lg p-2 text-sm focus:ring-1 focus:ring-[#ccff00] outline-none text-white"
-                            />
+                            <input type="number" value={exercise.reps} onChange={e => updateField(exercise.id, 'reps', Number(e.target.value))} className="bg-slate-800 border-none rounded-lg p-2 text-sm focus:ring-1 focus:ring-[#ccff00] outline-none text-white" />
                           </div>
                           <div className="flex flex-col">
                             <span className="text-[10px] text-slate-500 uppercase font-bold">Descanso</span>
-                            <input
-                              type="text"
-                              value={exercise.rest}
-                              onChange={e => updateField(exercise.id, 'rest', e.target.value)}
-                              className="bg-slate-800 border-none rounded-lg p-2 text-sm focus:ring-1 focus:ring-[#ccff00] outline-none text-white"
-                            />
+                            <input type="text" value={exercise.rest} onChange={e => updateField(exercise.id, 'rest', e.target.value)} className="bg-slate-800 border-none rounded-lg p-2 text-sm focus:ring-1 focus:ring-[#ccff00] outline-none text-white" />
                           </div>
                         </div>
                       </div>
@@ -409,7 +439,7 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
 
         <div className="px-4 mt-4">
           <button
-            onClick={() => setPreviewExercise(browseExercises[0] ?? null)}
+            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
             className="w-full py-8 border-2 border-dashed border-slate-800 rounded-xl flex flex-col items-center justify-center gap-2 text-slate-500 hover:border-[#ccff00] hover:text-[#ccff00] transition-all group"
           >
             <PlusCircle size={32} className="group-hover:scale-110 transition-transform" />
@@ -424,36 +454,24 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
           <div className="bg-slate-900 rounded-t-3xl w-full max-w-2xl max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="relative">
               <img src={gifSrc(previewExercise.id)} alt={previewExercise.name} className="w-full aspect-square object-cover rounded-t-3xl" />
-              <button onClick={() => setPreviewExercise(null)} className="absolute top-4 right-4 bg-black/50 rounded-full p-2 text-white">
-                <X size={20} />
-              </button>
+              <button onClick={() => setPreviewExercise(null)} className="absolute top-4 right-4 bg-black/50 rounded-full p-2 text-white"><X size={20} /></button>
             </div>
             <div className="p-5">
               <h3 className="text-xl font-bold capitalize mb-1">{previewExercise.name}</h3>
               <p className="text-[#ccff00] text-sm uppercase tracking-wider mb-3">{pt(TARGET_PT, previewExercise.target)} · {pt(EQUIPMENT_PT, previewExercise.equipment)}</p>
-
-              {/* Phase selector in modal */}
               <div className="flex gap-2 flex-wrap mb-4">
                 <p className="text-xs text-slate-500 w-full uppercase font-bold tracking-wider">Adicionar como:</p>
                 {PHASES.map(p => (
-                  <button
-                    key={p.key}
-                    onClick={() => setPendingPhase(p.key)}
+                  <button key={p.key} onClick={() => setPendingPhase(p.key)}
                     className={`text-xs font-bold uppercase tracking-wider px-3 py-1.5 rounded-full border transition-all ${
-                      pendingPhase === p.key
-                        ? 'bg-[#ccff00] text-slate-950 border-[#ccff00]'
-                        : 'border-slate-700 text-slate-400 hover:border-slate-500'
-                    }`}
-                  >
+                      pendingPhase === p.key ? 'bg-[#ccff00] text-slate-950 border-[#ccff00]' : 'border-slate-700 text-slate-400 hover:border-slate-500'
+                    }`}>
                     {p.label}
                   </button>
                 ))}
               </div>
-
               {previewExercise.secondaryMuscles.length > 0 && (
-                <p className="text-xs text-slate-400 mb-4">
-                  Músculos secundários: {previewExercise.secondaryMuscles.map(m => pt(TARGET_PT, m)).join(', ')}
-                </p>
+                <p className="text-xs text-slate-400 mb-4">Músculos secundários: {previewExercise.secondaryMuscles.map(m => pt(TARGET_PT, m)).join(', ')}</p>
               )}
               {previewExercise.instructions.length > 0 && (
                 <div className="space-y-2 mb-6">
@@ -471,10 +489,86 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
                 disabled={!!selected.find(s => s.id === previewExercise.id)}
                 className="w-full py-4 bg-[#ccff00] text-background-dark font-bold rounded-xl hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                {selected.find(s => s.id === previewExercise.id)
-                  ? 'Já adicionado'
-                  : `Adicionar como ${PHASES.find(p => p.key === pendingPhase)?.label}`}
+                {selected.find(s => s.id === previewExercise.id) ? 'Já adicionado' : `Adicionar como ${PHASES.find(p => p.key === pendingPhase)?.label}`}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Athlete selector modal */}
+      {showAthleteModal && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-end justify-center" onClick={() => setShowAthleteModal(false)}>
+          <div className="bg-slate-900 rounded-t-3xl w-full max-w-2xl max-h-[70vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="p-5 border-b border-slate-800 flex items-center justify-between">
+              <h3 className="text-lg font-bold">Atribuir a qual atleta?</h3>
+              <button onClick={() => setShowAthleteModal(false)} className="text-slate-500 hover:text-white"><X size={20} /></button>
+            </div>
+            <div className="p-4">
+              {loadingAthletes ? (
+                <div className="flex justify-center py-10"><Loader2 size={28} className="animate-spin text-[#ccff00]" /></div>
+              ) : athletes.length === 0 ? (
+                <p className="text-center text-slate-500 py-10 text-sm">Nenhum atleta vinculado à sua conta.</p>
+              ) : (
+                <div className="space-y-2">
+                  {athletes.map(a => (
+                    <button
+                      key={a.id}
+                      onClick={() => handleAssign(a.id)}
+                      className="w-full flex items-center gap-4 bg-slate-800 hover:bg-slate-700 rounded-xl p-4 transition-colors text-left"
+                    >
+                      <img
+                        src={a.avatarUrl ?? 'https://cdn-icons-png.flaticon.com/512/149/149071.png'}
+                        alt={a.fullName}
+                        className="w-10 h-10 rounded-full object-cover shrink-0"
+                      />
+                      <span className="font-bold text-slate-100">{a.fullName}</span>
+                      <ChevronRight size={18} className="ml-auto text-slate-500" />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Templates modal */}
+      {showTemplates && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-end justify-center" onClick={() => setShowTemplates(false)}>
+          <div className="bg-slate-900 rounded-t-3xl w-full max-w-2xl max-h-[75vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="p-5 border-b border-slate-800 flex items-center justify-between">
+              <h3 className="text-lg font-bold">Carregar Modelo</h3>
+              <button onClick={() => setShowTemplates(false)} className="text-slate-500 hover:text-white"><X size={20} /></button>
+            </div>
+            <div className="p-4">
+              {loadingTemplates ? (
+                <div className="flex justify-center py-10"><Loader2 size={28} className="animate-spin text-[#ccff00]" /></div>
+              ) : templates.length === 0 ? (
+                <div className="text-center py-10">
+                  <p className="text-slate-500 text-sm">Nenhum modelo salvo ainda.</p>
+                  <p className="text-slate-600 text-xs mt-1">Monte um programa e clique em "Modelo" para salvar.</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {templates.map(t => (
+                    <button
+                      key={t.id}
+                      onClick={() => handleLoadTemplate(t)}
+                      className="w-full flex items-center gap-4 bg-slate-800 hover:bg-slate-700 rounded-xl p-4 transition-colors text-left"
+                    >
+                      <div className="w-10 h-10 rounded-full bg-[#ccff00]/10 border border-[#ccff00]/30 flex items-center justify-center shrink-0">
+                        <BookTemplate size={18} className="text-[#ccff00]" />
+                      </div>
+                      <div>
+                        <p className="font-bold text-slate-100">{t.name}</p>
+                        <p className="text-xs text-slate-500">{t.exercises.length} exercício{t.exercises.length !== 1 ? 's' : ''}</p>
+                      </div>
+                      <ChevronRight size={18} className="ml-auto text-slate-500" />
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -486,15 +580,15 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
             <Edit size={24} />
             <span className="text-[10px] font-bold uppercase tracking-widest">Construtor</span>
           </button>
-          <button className="flex flex-col items-center gap-1 text-slate-400">
-            <Dumbbell size={24} />
-            <span className="text-[10px] font-bold uppercase tracking-widest">Exercícios</span>
+          <button onClick={() => navigate('athletes-list')} className="flex flex-col items-center gap-1 text-slate-400 hover:text-slate-200 transition-colors">
+            <Users size={24} />
+            <span className="text-[10px] font-bold uppercase tracking-widest">Atletas</span>
           </button>
-          <button className="flex flex-col items-center gap-1 text-slate-400">
+          <button onClick={() => navigate('physio-dashboard')} className="flex flex-col items-center gap-1 text-slate-400 hover:text-slate-200 transition-colors">
             <LineChart size={24} />
-            <span className="text-[10px] font-bold uppercase tracking-widest">Progresso</span>
+            <span className="text-[10px] font-bold uppercase tracking-widest">Dashboard</span>
           </button>
-          <button onClick={() => navigate('athlete-profile')} className="flex flex-col items-center gap-1 text-slate-400">
+          <button onClick={() => navigate('physio-dashboard')} className="flex flex-col items-center gap-1 text-slate-400 hover:text-slate-200 transition-colors">
             <User size={24} />
             <span className="text-[10px] font-bold uppercase tracking-widest">Perfil</span>
           </button>
