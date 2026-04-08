@@ -148,6 +148,12 @@ async function fetchFromApi(endpoint: string): Promise<Exercise[]> {
 
 // ── Wger API helpers ─────────────────────────────────────────────
 
+// Hardcoded Wger category IDs as fallback (verified from wger.de/api/v2/exercisecategory/)
+const WGER_CATEGORY_FALLBACK: Record<string, number> = {
+  Abs: 10, Arms: 8, Back: 12, Calves: 14,
+  Cardio: 15, Chest: 11, Legs: 9, Shoulders: 13,
+};
+
 let _wgerCategories: Record<string, number> | null = null;
 
 function wgerUrl(endpoint: string): string {
@@ -158,16 +164,20 @@ async function getWgerCategories(): Promise<Record<string, number>> {
   if (_wgerCategories) return _wgerCategories;
   try {
     const res = await fetch(wgerUrl('exercisecategory/?format=json'));
-    if (!res.ok) throw new Error('Wger categories unavailable');
+    if (!res.ok) throw new Error(`Wger categories HTTP ${res.status}`);
     const data = await res.json();
     const map: Record<string, number> = {};
     for (const cat of data.results ?? []) {
       map[cat.name] = cat.id;
     }
+    if (Object.keys(map).length === 0) throw new Error('Wger categories empty');
     _wgerCategories = map;
+    console.log('[wger] categories loaded:', map);
     return map;
-  } catch {
-    return {};
+  } catch (err) {
+    console.warn('[wger] categories fetch failed, using fallback:', err);
+    _wgerCategories = WGER_CATEGORY_FALLBACK;
+    return WGER_CATEGORY_FALLBACK;
   }
 }
 
@@ -241,25 +251,30 @@ async function fetchFromWger(bodyPart: string): Promise<Exercise[]> {
 
     await Promise.all(
       ids.map(async (catId) => {
-        const res = await fetch(
-          wgerUrl(`exerciseinfo/?format=json&category=${catId}&limit=20`),
-          { signal: AbortSignal.timeout(8000) }
-        );
-        if (!res.ok) return;
-        const data = await res.json();
-        for (const item of data.results ?? []) {
-          const exercise = mapWgerExercise(item as Record<string, unknown>, bodyPart);
-          if (exercise && !seen.has(exercise.id)) {
-            seen.add(exercise.id);
-            results.push(exercise);
+        try {
+          const url = wgerUrl(`exerciseinfo/?format=json&category=${catId}&limit=20`);
+          console.log(`[wger] fetching category ${catId} for bodyPart=${bodyPart}`);
+          const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+          if (!res.ok) { console.warn(`[wger] category ${catId} HTTP ${res.status}`); return; }
+          const data = await res.json();
+          console.log(`[wger] category ${catId} returned ${data.results?.length ?? 0} exercises`);
+          for (const item of data.results ?? []) {
+            const exercise = mapWgerExercise(item as Record<string, unknown>, bodyPart);
+            if (exercise && !seen.has(exercise.id)) {
+              seen.add(exercise.id);
+              results.push(exercise);
+            }
           }
+        } catch (err) {
+          console.warn(`[wger] category ${catId} failed:`, err);
         }
       })
     );
 
+    console.log(`[wger] total for ${bodyPart}: ${results.length} exercises`);
     return results;
   } catch (err) {
-    console.warn('[exerciseService] Wger fetch failed:', err);
+    console.warn('[wger] fetchFromWger failed:', err);
     return [];
   }
 }
