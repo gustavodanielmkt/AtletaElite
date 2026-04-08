@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 import { supabase } from '../lib/supabase';
 
 export interface Exercise {
@@ -9,16 +10,37 @@ export interface Exercise {
   gifUrl: string;
   secondaryMuscles: string[];
   instructions: string[];
+  source?: 'exercisedb' | 'wger' | 'seed' | 'custom';
+  isCustom?: boolean;
+  createdBy?: string;
 }
 
 const RAPIDAPI_KEY = import.meta.env.VITE_RAPIDAPI_KEY;
 const RAPIDAPI_HOST = import.meta.env.VITE_RAPIDAPI_HOST;
+const WGER_BASE = 'https://wger.de/api/v2';
+const WGER_LANGUAGE_PT = 7;
 
 const BODY_PART_CATEGORY_MAP: Record<string, string[]> = {
-  warmup:   ['cardio'],
-  mobility: ['back', 'neck', 'shoulders'],
-  strength: ['chest', 'lower arms', 'lower legs', 'upper arms', 'upper legs', 'waist'],
-  recovery: ['back', 'lower legs', 'upper legs'],
+  warmup:     ['cardio'],
+  mobility:   ['back', 'neck', 'shoulders'],
+  strength:   ['chest', 'lower arms', 'lower legs', 'upper arms', 'upper legs', 'waist'],
+  recovery:   ['back', 'lower legs', 'upper legs'],
+  stretching: ['stretching'],
+};
+
+// Map from our body part names to Wger category names
+const WGER_BODY_PART_MAP: Record<string, string[]> = {
+  back:         ['Back'],
+  cardio:       ['Cardio'],
+  chest:        ['Chest'],
+  'lower arms': ['Arms'],
+  'lower legs': ['Calves'],
+  neck:         [],
+  shoulders:    ['Shoulders'],
+  'upper arms': ['Arms'],
+  'upper legs': ['Legs'],
+  waist:        ['Abs'],
+  stretching:   [], // Only from seeded data
 };
 
 // ── Corruption cleanup ─────────────────────────────────────────
@@ -61,9 +83,6 @@ async function cleanupCorruptedRows(): Promise<void> {
 }
 
 // ── Gemini Translation ──────────────────────────────────────────
-// Calls our /api/translate serverless function (Gemini 2.0 Flash).
-// Returns translated name + instructions. Falls back to English on error.
-
 async function translateWithGemini(
   name: string,
   instructions: string[]
@@ -85,7 +104,6 @@ async function translateWithGemini(
         ? data.translatedInstructions
         : instructions;
 
-    // Safety: reject if Gemini returned garbage
     if (translatedName.length > 200 || translatedName.includes('```')) {
       return { translatedName: name, translatedInstructions: instructions };
     }
@@ -97,7 +115,7 @@ async function translateWithGemini(
   }
 }
 
-// ── API helpers ─────────────────────────────────────────────────
+// ── ExerciseDB API helpers ───────────────────────────────────────
 
 function mapApiExercise(raw: Record<string, unknown>): Exercise {
   const id = String(raw.id);
@@ -110,6 +128,7 @@ function mapApiExercise(raw: Record<string, unknown>): Exercise {
     gifUrl:           '',
     secondaryMuscles: Array.isArray(raw.secondaryMuscles) ? raw.secondaryMuscles.map(String) : [],
     instructions:     Array.isArray(raw.instructions) ? raw.instructions.map(String) : [],
+    source:           'exercisedb',
   };
 }
 
@@ -127,6 +146,120 @@ async function fetchFromApi(endpoint: string): Promise<Exercise[]> {
   return items.map(mapApiExercise);
 }
 
+// ── Wger API helpers ─────────────────────────────────────────────
+
+let _wgerCategories: Record<string, number> | null = null;
+
+async function getWgerCategories(): Promise<Record<string, number>> {
+  if (_wgerCategories) return _wgerCategories;
+  try {
+    const res = await fetch(`${WGER_BASE}/exercisecategory/?format=json`);
+    if (!res.ok) throw new Error('Wger categories unavailable');
+    const data = await res.json();
+    const map: Record<string, number> = {};
+    for (const cat of data.results ?? []) {
+      map[cat.name] = cat.id;
+    }
+    _wgerCategories = map;
+    return map;
+  } catch {
+    return {};
+  }
+}
+
+function stripHtml(html: string): string {
+  return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function parseWgerInstructions(description: string): string[] {
+  const text = stripHtml(description);
+  if (!text) return [];
+  return text
+    .split(/(?<=[.!?])\s+/)
+    .map(s => s.trim())
+    .filter(s => s.length > 15)
+    .slice(0, 8);
+}
+
+function mapWgerExercise(raw: Record<string, unknown>, bodyPart: string): Exercise | null {
+  const translations = raw.translations as Array<Record<string, unknown>> ?? [];
+  const ptTranslation = translations.find(
+    (t) => (t.language as Record<string, unknown>)?.id === WGER_LANGUAGE_PT
+  );
+  const enTranslation = translations.find(
+    (t) => (t.language as Record<string, unknown>)?.id === 2
+  );
+  const translation = ptTranslation ?? enTranslation;
+  if (!translation) return null;
+
+  const name = String(translation.name ?? '').trim();
+  if (!name || name.length < 2) return null;
+
+  const description = String(translation.description ?? '');
+  const instructions = parseWgerInstructions(description);
+
+  const images = raw.images as Array<Record<string, unknown>> ?? [];
+  const mainImage = images.find(img => img.is_main) ?? images[0];
+  const gifUrl = mainImage ? String(mainImage.image ?? '') : '';
+
+  const muscles = raw.muscles as Array<Record<string, unknown>> ?? [];
+  const musclesSecondary = raw.muscles_secondary as Array<Record<string, unknown>> ?? [];
+  const target = muscles[0] ? String(muscles[0].name ?? '') : '';
+  const secondaryMuscles = musclesSecondary.map(m => String(m.name ?? ''));
+
+  const equipment = raw.equipment as Array<Record<string, unknown>> ?? [];
+  const equipmentName = equipment[0] ? String(equipment[0].name ?? 'body weight').toLowerCase() : 'body weight';
+
+  return {
+    id:              `wger_${raw.id}`,
+    name,
+    bodyPart,
+    target,
+    equipment:       equipmentName,
+    gifUrl,
+    secondaryMuscles,
+    instructions,
+    source:          'wger',
+  };
+}
+
+async function fetchFromWger(bodyPart: string): Promise<Exercise[]> {
+  const categoryNames = WGER_BODY_PART_MAP[bodyPart] ?? [];
+  if (categoryNames.length === 0) return [];
+
+  try {
+    const categoryIds = await getWgerCategories();
+    const ids = categoryNames.map(n => categoryIds[n]).filter(Boolean);
+    if (ids.length === 0) return [];
+
+    const results: Exercise[] = [];
+    const seen = new Set<string>();
+
+    await Promise.all(
+      ids.map(async (catId) => {
+        const res = await fetch(
+          `${WGER_BASE}/exerciseinfo/?format=json&category=${catId}&limit=20`,
+          { signal: AbortSignal.timeout(8000) }
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+        for (const item of data.results ?? []) {
+          const exercise = mapWgerExercise(item as Record<string, unknown>, bodyPart);
+          if (exercise && !seen.has(exercise.id)) {
+            seen.add(exercise.id);
+            results.push(exercise);
+          }
+        }
+      })
+    );
+
+    return results;
+  } catch (err) {
+    console.warn('[exerciseService] Wger fetch failed:', err);
+    return [];
+  }
+}
+
 // ── Helpers ─────────────────────────────────────────────────────
 
 function toDbRow(e: Exercise) {
@@ -139,10 +272,12 @@ function toDbRow(e: Exercise) {
     gif_url:           e.gifUrl || null,
     secondary_muscles: e.secondaryMuscles,
     instructions:      e.instructions,
+    source:            e.source ?? 'exercisedb',
+    is_custom:         e.isCustom ?? false,
+    created_by:        e.createdBy ?? null,
   };
 }
 
-// Save exercises to Supabase immediately, without translation.
 async function saveToSupabase(exercises: Exercise[]): Promise<void> {
   if (!exercises.length) return;
   await supabase
@@ -150,8 +285,6 @@ async function saveToSupabase(exercises: Exercise[]): Promise<void> {
     .upsert(exercises.map(toDbRow), { onConflict: 'id' });
 }
 
-// Translate all exercises in parallel (not sequential batches).
-// Updates memory cache and Supabase when done, then calls onDone.
 async function translateAndUpdate(
   exercises: Exercise[],
   category: string,
@@ -190,7 +323,23 @@ function mapDbRow(row: Record<string, unknown>): Exercise {
     gifUrl:           row.gif_url ? String(row.gif_url) : '',
     secondaryMuscles: Array.isArray(row.secondary_muscles) ? row.secondary_muscles.map(String) : [],
     instructions:     Array.isArray(row.instructions) ? row.instructions.map(String) : [],
+    source:           (row.source as Exercise['source']) ?? 'exercisedb',
+    isCustom:         Boolean(row.is_custom),
+    createdBy:        row.created_by ? String(row.created_by) : undefined,
   };
+}
+
+function mergeExercises(fromDb: Exercise[], fromWger: Exercise[]): Exercise[] {
+  const seen = new Set<string>();
+  const result: Exercise[] = [];
+  for (const e of [...fromDb, ...fromWger]) {
+    const key = e.name.toLowerCase().replace(/\s+/g, ' ').trim();
+    if (!seen.has(key)) {
+      seen.add(key);
+      result.push(e);
+    }
+  }
+  return result.slice(0, 30);
 }
 
 // ── In-memory cache ─────────────────────────────────────────────
@@ -198,7 +347,7 @@ const _categoryCache = new Map<string, Exercise[]>();
 
 export const ALL_BODY_PARTS = [
   'back', 'cardio', 'chest', 'lower arms', 'lower legs',
-  'neck', 'shoulders', 'upper arms', 'upper legs', 'waist',
+  'neck', 'shoulders', 'stretching', 'upper arms', 'upper legs', 'waist',
 ] as const;
 
 export type BodyPart = typeof ALL_BODY_PARTS[number];
@@ -242,7 +391,6 @@ export async function searchExercises(query: string): Promise<Exercise[]> {
 
   if (cached && cached.length > 0) return cached.map(mapDbRow);
 
-  // Fetch, save in English, translate in background
   const results = await fetchFromApi(
     `/exercises/name/${encodeURIComponent(query.toLowerCase())}?limit=20&offset=0`
   );
@@ -251,7 +399,6 @@ export async function searchExercises(query: string): Promise<Exercise[]> {
   return results;
 }
 
-// Fetch exercises by a single API body part (for ProgramBuilder browse tabs).
 export async function getExercisesByBodyPart(
   bodyPart: string,
   onTranslated?: (updated: Exercise[]) => void
@@ -262,41 +409,82 @@ export async function getExercisesByBodyPart(
 
   await cleanupCorruptedRows();
 
+  // Stretching: only seeded/custom data from Supabase, no external API
+  if (bodyPart === 'stretching') {
+    const { data: cached } = await supabase
+      .from('exercises')
+      .select('*')
+      .eq('body_part', 'stretching')
+      .order('name')
+      .limit(60);
+
+    const results = (cached ?? []).map(mapDbRow);
+    _categoryCache.set(cacheKey, results);
+    return results;
+  }
+
+  // Check Supabase cache (non-seed exercises)
   const { data: cached } = await supabase
     .from('exercises')
     .select('*')
     .eq('body_part', bodyPart)
-    .limit(20);
+    .not('id', 'like', 'seed_%')
+    .limit(30);
 
-  if (cached && cached.length >= 10) {
+  if (cached && cached.length >= 15) {
     const results = cached.map(mapDbRow);
     _categoryCache.set(cacheKey, results);
     return results;
   }
 
+  // Partial data: return immediately, fetch from both APIs in background
   if (cached && cached.length > 0) {
     const partial = cached.map(mapDbRow);
     _categoryCache.set(cacheKey, partial);
+
     (async () => {
       try {
-        const fetched = await fetchFromApi(
-          `/exercises/bodyPart/${encodeURIComponent(bodyPart)}?limit=20&offset=0`
-        );
-        await saveToSupabase(fetched);
-        translateAndUpdate(fetched, cacheKey, onTranslated);
+        const [edbResult, wgerResult] = await Promise.allSettled([
+          fetchFromApi(`/exercises/bodyPart/${encodeURIComponent(bodyPart)}?limit=20&offset=0`),
+          fetchFromWger(bodyPart),
+        ]);
+        const fromEdb = edbResult.status === 'fulfilled' ? edbResult.value : [];
+        const fromWger = wgerResult.status === 'fulfilled' ? wgerResult.value : [];
+        const merged = mergeExercises(fromEdb, fromWger);
+        await saveToSupabase(merged);
+        const needsTranslation = merged.filter(e => e.source === 'exercisedb');
+        if (needsTranslation.length > 0) {
+          translateAndUpdate(needsTranslation, cacheKey, onTranslated);
+        } else {
+          _categoryCache.set(cacheKey, merged);
+          onTranslated?.(merged);
+        }
       } catch { /* keep partial */ }
     })();
+
     return partial;
   }
 
-  const fetched = (await fetchFromApi(
-    `/exercises/bodyPart/${encodeURIComponent(bodyPart)}?limit=20&offset=0`
-  )).slice(0, 20);
+  // No cache: fetch from both APIs in parallel
+  const [edbResult, wgerResult] = await Promise.allSettled([
+    fetchFromApi(`/exercises/bodyPart/${encodeURIComponent(bodyPart)}?limit=20&offset=0`),
+    fetchFromWger(bodyPart),
+  ]);
 
-  await saveToSupabase(fetched);
-  _categoryCache.set(cacheKey, fetched);
-  translateAndUpdate(fetched, cacheKey, onTranslated);
-  return fetched;
+  const fromEdb = edbResult.status === 'fulfilled' ? edbResult.value.slice(0, 20) : [];
+  const fromWger = wgerResult.status === 'fulfilled' ? wgerResult.value : [];
+  const merged = mergeExercises(fromEdb, fromWger);
+
+  await saveToSupabase(merged);
+  _categoryCache.set(cacheKey, merged);
+
+  // Only translate ExerciseDB exercises (Wger already has PT or will translate in background)
+  const needsTranslation = merged.filter(e => e.source === 'exercisedb');
+  if (needsTranslation.length > 0) {
+    translateAndUpdate(needsTranslation, cacheKey, onTranslated);
+  }
+
+  return merged;
 }
 
 type ExerciseRow = {
@@ -322,7 +510,6 @@ async function insertProgramExercises(programId: string, exercises: ExerciseRow[
   return error ? { error: error.message } : null;
 }
 
-// Save a program assigned to an athlete.
 export async function saveProgram(
   physioId: string,
   athleteId: string,
@@ -343,7 +530,6 @@ export async function saveProgram(
   return { programId: program.id };
 }
 
-// Save a reusable template (no athlete).
 export async function saveTemplate(
   physioId: string,
   name: string,
@@ -363,7 +549,6 @@ export async function saveTemplate(
   return { programId: program.id };
 }
 
-// List athletes linked to a physio.
 export async function getPhysioAthletes(physioId: string): Promise<Athlete[]> {
   const { data } = await supabase
     .from('profiles')
@@ -379,7 +564,6 @@ export async function getPhysioAthletes(physioId: string): Promise<Athlete[]> {
   }));
 }
 
-// List reusable templates created by a physio.
 export async function getPhysioTemplates(physioId: string): Promise<Program[]> {
   const { data: programs } = await supabase
     .from('programs')
@@ -425,7 +609,6 @@ export async function getPhysioTemplates(physioId: string): Promise<Program[]> {
   return result;
 }
 
-// Fetch the most recent program assigned to an athlete, with full exercise data.
 export async function getActiveProgram(athleteId: string): Promise<Program | null> {
   const { data: program, error } = await supabase
     .from('programs')
@@ -483,13 +666,10 @@ export async function getActiveProgram(athleteId: string): Promise<Program | nul
   };
 }
 
-// onTranslated: optional callback fired when background translation finishes.
-// The component uses this to swap English names for Portuguese without a reload.
 export async function getExercisesByCategory(
   category: string,
   onTranslated?: (updated: Exercise[]) => void
 ): Promise<Exercise[]> {
-  // 1. Memory cache — instant, no network
   if (_categoryCache.has(category)) return _categoryCache.get(category)!;
 
   const bodyParts = BODY_PART_CATEGORY_MAP[category] ?? [];
@@ -497,7 +677,6 @@ export async function getExercisesByCategory(
 
   await cleanupCorruptedRows();
 
-  // 2. Supabase cache — no gif_url filter (was the bug causing cache misses)
   const { data: cached } = await supabase
     .from('exercises')
     .select('*')
@@ -510,7 +689,6 @@ export async function getExercisesByCategory(
     return results;
   }
 
-  // 3. Partial Supabase data — return immediately, fetch full set in background
   if (cached && cached.length > 0) {
     const partial = cached.map(mapDbRow);
     _categoryCache.set(category, partial);
@@ -530,8 +708,6 @@ export async function getExercisesByCategory(
     return partial;
   }
 
-  // 4. No cache at all — fetch all bodyParts in parallel, save in English immediately,
-  //    return to user (~2-3s), then translate in background.
   const fetched = (await Promise.all(
     bodyParts.map((part) =>
       fetchFromApi(`/exercises/bodyPart/${encodeURIComponent(part)}?limit=10&offset=0`)
@@ -540,9 +716,76 @@ export async function getExercisesByCategory(
 
   await saveToSupabase(fetched);
   _categoryCache.set(category, fetched);
-
-  // Translate in background — updates Supabase + memory cache when done
   translateAndUpdate(fetched, category, onTranslated);
 
   return fetched;
+}
+
+// ── Custom exercise CRUD ────────────────────────────────────────
+
+export interface CustomExerciseInput {
+  name: string;
+  bodyPart: string;
+  target: string;
+  equipment: string;
+  instructions: string[];
+  gifUrl?: string;
+  physioId: string;
+}
+
+export async function createCustomExercise(
+  input: CustomExerciseInput
+): Promise<{ exercise: Exercise } | { error: string }> {
+  const id = `custom_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+
+  const exercise: Exercise = {
+    id,
+    name:            input.name.trim(),
+    bodyPart:        input.bodyPart,
+    target:          input.target.trim(),
+    equipment:       input.equipment.trim(),
+    gifUrl:          input.gifUrl?.trim() ?? '',
+    secondaryMuscles: [],
+    instructions:    input.instructions.filter(i => i.trim().length > 0),
+    source:          'custom',
+    isCustom:        true,
+    createdBy:       input.physioId,
+  };
+
+  const { error } = await supabase
+    .from('exercises')
+    .insert(toDbRow(exercise));
+
+  if (error) return { error: error.message };
+
+  // Invalidate cache for this body part
+  _categoryCache.delete(`bodypart:${input.bodyPart}`);
+
+  return { exercise };
+}
+
+export async function getCustomExercises(physioId: string): Promise<Exercise[]> {
+  const { data } = await supabase
+    .from('exercises')
+    .select('*')
+    .eq('is_custom', true)
+    .eq('created_by', physioId)
+    .order('name');
+
+  return (data ?? []).map(mapDbRow);
+}
+
+export async function deleteCustomExercise(exerciseId: string): Promise<{ error: string } | null> {
+  const { error } = await supabase
+    .from('exercises')
+    .delete()
+    .eq('id', exerciseId)
+    .eq('is_custom', true);
+
+  if (error) return { error: error.message };
+
+  // Invalidate all body part caches
+  _categoryCache.clear();
+
+  return null;
 }

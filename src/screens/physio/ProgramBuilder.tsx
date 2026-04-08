@@ -1,21 +1,39 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { ArrowLeft, Search, GripVertical, PlayCircle, PlusCircle, Edit, LineChart, User, X, Loader2, CheckCircle2, AlertCircle, ChevronLeft, ChevronRight, BookTemplate, Users, Info } from 'lucide-react';
+import { ArrowLeft, Search, GripVertical, PlayCircle, PlusCircle, Edit, LineChart, User, X, Loader2, CheckCircle2, AlertCircle, ChevronLeft, ChevronRight, BookTemplate, Users, Info, Dumbbell } from 'lucide-react';
 import {
   searchExercises, getExercisesByBodyPart, saveProgram, saveTemplate,
-  getPhysioAthletes, getPhysioTemplates,
+  getPhysioAthletes, getPhysioTemplates, createCustomExercise,
   ALL_BODY_PARTS, type Exercise, type Program, type Athlete,
 } from '../../services/exerciseService';
 import { supabase } from '../../lib/supabase';
 
-function gifSrc(id: string): string {
-  return `/api/exercise-image?id=${id}`;
-}
 
 const BODY_PART_PT: Record<string, string> = {
   back: 'Costas', cardio: 'Cardio', chest: 'Peito', neck: 'Pescoço',
   shoulders: 'Ombros', 'upper arms': 'Braços', 'lower arms': 'Antebraços',
   'upper legs': 'Coxas', 'lower legs': 'Panturrilhas', waist: 'Abdômen',
+  stretching: 'Alongamentos',
 };
+
+function exerciseImgSrc(exercise: Exercise): string {
+  if (exercise.gifUrl?.startsWith('http')) return exercise.gifUrl;
+  if (exercise.id.startsWith('wger_') || exercise.id.startsWith('seed_') || exercise.id.startsWith('custom_')) return '';
+  return `/api/exercise-image?id=${exercise.id}`;
+}
+
+const BODY_PARTS_LIST = [
+  { key: 'back', label: 'Costas' },
+  { key: 'cardio', label: 'Cardio' },
+  { key: 'chest', label: 'Peito' },
+  { key: 'lower arms', label: 'Antebraços' },
+  { key: 'lower legs', label: 'Panturrilhas' },
+  { key: 'neck', label: 'Pescoço' },
+  { key: 'shoulders', label: 'Ombros' },
+  { key: 'stretching', label: 'Alongamentos' },
+  { key: 'upper arms', label: 'Braços' },
+  { key: 'upper legs', label: 'Coxas' },
+  { key: 'waist', label: 'Abdômen' },
+] as const;
 
 const TARGET_PT: Record<string, string> = {
   abductors: 'Abdutores', abs: 'Abdômen', adductors: 'Adutores',
@@ -99,6 +117,15 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
   const [loadingTemplates, setLoadingTemplates] = useState(false);
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [templateSuccess, setTemplateSuccess] = useState(false);
+
+  // Custom exercise modal
+  const [showCustomModal, setShowCustomModal] = useState(false);
+  const [customForm, setCustomForm] = useState({
+    name: '', bodyPart: 'stretching', target: '', equipment: 'body weight', gifUrl: '',
+    instructionsRaw: '',
+  });
+  const [savingCustom, setSavingCustom] = useState(false);
+  const [customError, setCustomError] = useState<string | null>(null);
 
   const localCache = useRef<Map<string, Exercise[]>>(new Map());
   const tabsRef = useRef<HTMLDivElement>(null);
@@ -215,6 +242,39 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
     setLoadingTemplates(true);
     if (physioId) setTemplates(await getPhysioTemplates(physioId));
     setLoadingTemplates(false);
+  };
+
+  const handleSaveCustomExercise = async () => {
+    if (!physioId) return;
+    if (!customForm.name.trim()) { setCustomError('Digite o nome do exercício.'); return; }
+    if (!customForm.target.trim()) { setCustomError('Digite o músculo alvo.'); return; }
+    const instructions = customForm.instructionsRaw
+      .split('\n')
+      .map(s => s.trim())
+      .filter(s => s.length > 0);
+    if (instructions.length === 0) { setCustomError('Adicione ao menos uma instrução.'); return; }
+
+    setSavingCustom(true);
+    setCustomError(null);
+    const result = await createCustomExercise({
+      name: customForm.name,
+      bodyPart: customForm.bodyPart,
+      target: customForm.target,
+      equipment: customForm.equipment,
+      instructions,
+      gifUrl: customForm.gifUrl,
+      physioId,
+    });
+    setSavingCustom(false);
+
+    if ('error' in result) { setCustomError(result.error); return; }
+
+    // Add to selected immediately and close modal
+    const ex = result.exercise;
+    setSelected(prev => [...prev, { ...ex, phase: pendingPhase, sets: 3, reps: 12, rest: '30s' }]);
+    localCache.current.delete(ex.bodyPart);
+    setShowCustomModal(false);
+    setCustomForm({ name: '', bodyPart: 'stretching', target: '', equipment: 'body weight', gifUrl: '', instructionsRaw: '' });
   };
 
   // Load a template into the builder
@@ -348,6 +408,13 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
               <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest">
                 {debouncedQuery ? `Resultados para "${debouncedQuery}"` : pt(BODY_PART_PT, activeBodyPart)}
               </h3>
+              <button
+                onClick={() => { setCustomForm(f => ({ ...f, bodyPart: activeBodyPart })); setShowCustomModal(true); }}
+                className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500 hover:text-[#ccff00] transition-colors"
+              >
+                <PlusCircle size={13} />
+                Criar
+              </button>
             </div>
 
             {/* Phase chips — select once, tap to add */}
@@ -380,8 +447,12 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
                         isAdded ? 'border-[#ccff00]/60' : 'border-slate-800 hover:border-[#ccff00]/40'
                       }`}
                     >
-                      <div className="relative w-full aspect-square bg-slate-800">
-                        <img src={gifSrc(exercise.id)} alt={exercise.name} className={`w-full h-full object-cover ${isAdded ? 'opacity-70' : ''}`} />
+                      <div className="relative w-full aspect-square bg-slate-800 flex items-center justify-center">
+                        {exerciseImgSrc(exercise) ? (
+                          <img src={exerciseImgSrc(exercise)} alt={exercise.name} className={`w-full h-full object-cover ${isAdded ? 'opacity-70' : ''}`} />
+                        ) : (
+                          <Dumbbell size={40} className={`text-slate-600 ${isAdded ? 'opacity-50' : ''}`} />
+                        )}
                         {isAdded && (
                           <div className="absolute inset-0 flex items-center justify-center bg-[#ccff00]/10">
                             <CheckCircle2 size={36} className="text-[#ccff00] drop-shadow" />
@@ -429,8 +500,12 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
                   </button>
                   <div className="ml-6">
                     <div className="flex gap-4 items-start">
-                      <div className="w-20 h-20 rounded-lg overflow-hidden flex-shrink-0 relative cursor-pointer" onClick={() => setPreviewExercise(exercise)}>
-                        <img src={gifSrc(exercise.id)} alt={exercise.name} className="w-full h-full object-cover" />
+                      <div className="w-20 h-20 rounded-lg overflow-hidden flex-shrink-0 relative cursor-pointer bg-slate-800 flex items-center justify-center" onClick={() => setPreviewExercise(exercise)}>
+                        {exerciseImgSrc(exercise) ? (
+                          <img src={exerciseImgSrc(exercise)} alt={exercise.name} className="w-full h-full object-cover" />
+                        ) : (
+                          <Dumbbell size={28} className="text-slate-600" />
+                        )}
                         <div className="absolute inset-0 flex items-center justify-center bg-black/20"><PlayCircle size={24} className="text-white" /></div>
                       </div>
                       <div className="flex-1">
@@ -484,8 +559,12 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
       {previewExercise && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-end justify-center" onClick={() => setPreviewExercise(null)}>
           <div className="bg-slate-900 rounded-t-3xl w-full max-w-2xl max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-            <div className="relative">
-              <img src={gifSrc(previewExercise.id)} alt={previewExercise.name} className="w-full aspect-square object-cover rounded-t-3xl" />
+            <div className="relative bg-slate-800 flex items-center justify-center rounded-t-3xl aspect-square">
+              {exerciseImgSrc(previewExercise) ? (
+                <img src={exerciseImgSrc(previewExercise)} alt={previewExercise.name} className="w-full aspect-square object-cover rounded-t-3xl" />
+              ) : (
+                <Dumbbell size={72} className="text-slate-600" />
+              )}
               <button onClick={() => setPreviewExercise(null)} className="absolute top-4 right-4 bg-black/50 rounded-full p-2 text-white"><X size={20} /></button>
             </div>
             <div className="p-5">
@@ -589,6 +668,113 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
                   ))}
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Custom exercise modal */}
+      {showCustomModal && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-end justify-center" onClick={() => setShowCustomModal(false)}>
+          <div className="bg-slate-900 rounded-t-3xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="p-5 border-b border-slate-800 flex items-center justify-between">
+              <h3 className="text-lg font-bold">Criar Exercício Personalizado</h3>
+              <button onClick={() => setShowCustomModal(false)} className="text-slate-500 hover:text-white"><X size={20} /></button>
+            </div>
+            <div className="p-5 space-y-4">
+              {customError && (
+                <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3">
+                  <AlertCircle size={15} className="text-red-400 shrink-0" />
+                  <p className="text-sm text-red-400">{customError}</p>
+                </div>
+              )}
+
+              <div>
+                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-1">Nome do exercício *</label>
+                <input
+                  type="text"
+                  value={customForm.name}
+                  onChange={e => setCustomForm(f => ({ ...f, name: e.target.value }))}
+                  placeholder="Ex: Alongamento do Quadríceps em Pé"
+                  className="w-full bg-slate-800 rounded-xl px-4 py-3 text-sm text-slate-100 placeholder-slate-500 outline-none focus:ring-2 focus:ring-[#ccff00]/50"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-1">Grupo muscular</label>
+                <select
+                  value={customForm.bodyPart}
+                  onChange={e => setCustomForm(f => ({ ...f, bodyPart: e.target.value }))}
+                  className="w-full bg-slate-800 rounded-xl px-4 py-3 text-sm text-slate-100 outline-none focus:ring-2 focus:ring-[#ccff00]/50"
+                >
+                  {BODY_PARTS_LIST.map(bp => (
+                    <option key={bp.key} value={bp.key}>{bp.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-1">Músculo alvo *</label>
+                <input
+                  type="text"
+                  value={customForm.target}
+                  onChange={e => setCustomForm(f => ({ ...f, target: e.target.value }))}
+                  placeholder="Ex: quadriceps, isquiotibiais, glúteos..."
+                  className="w-full bg-slate-800 rounded-xl px-4 py-3 text-sm text-slate-100 placeholder-slate-500 outline-none focus:ring-2 focus:ring-[#ccff00]/50"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-1">Equipamento</label>
+                <select
+                  value={customForm.equipment}
+                  onChange={e => setCustomForm(f => ({ ...f, equipment: e.target.value }))}
+                  className="w-full bg-slate-800 rounded-xl px-4 py-3 text-sm text-slate-100 outline-none focus:ring-2 focus:ring-[#ccff00]/50"
+                >
+                  <option value="body weight">Peso Corporal</option>
+                  <option value="band">Elástico</option>
+                  <option value="barbell">Barra</option>
+                  <option value="dumbbell">Haltere</option>
+                  <option value="kettlebell">Kettlebell</option>
+                  <option value="cable">Cabo/Polia</option>
+                  <option value="none">Sem equipamento</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                  Instruções * <span className="text-slate-600 normal-case font-normal">(uma por linha)</span>
+                </label>
+                <textarea
+                  value={customForm.instructionsRaw}
+                  onChange={e => setCustomForm(f => ({ ...f, instructionsRaw: e.target.value }))}
+                  placeholder={`Fique em pé com os pés juntos.\nDobre o joelho direito levando o calcanhar ao glúteo.\nMantenha por 20 a 30 segundos.`}
+                  rows={5}
+                  className="w-full bg-slate-800 rounded-xl px-4 py-3 text-sm text-slate-100 placeholder-slate-600 outline-none focus:ring-2 focus:ring-[#ccff00]/50 resize-none"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                  URL da imagem <span className="text-slate-600 normal-case font-normal">(opcional)</span>
+                </label>
+                <input
+                  type="url"
+                  value={customForm.gifUrl}
+                  onChange={e => setCustomForm(f => ({ ...f, gifUrl: e.target.value }))}
+                  placeholder="https://exemplo.com/imagem.gif"
+                  className="w-full bg-slate-800 rounded-xl px-4 py-3 text-sm text-slate-100 placeholder-slate-500 outline-none focus:ring-2 focus:ring-[#ccff00]/50"
+                />
+              </div>
+
+              <button
+                onClick={handleSaveCustomExercise}
+                disabled={savingCustom}
+                className="w-full py-4 bg-[#ccff00] text-slate-950 font-black rounded-xl hover:opacity-90 transition-opacity disabled:opacity-60 flex items-center justify-center gap-2"
+              >
+                {savingCustom ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
+                {savingCustom ? 'Salvando...' : 'Salvar e Adicionar ao Programa'}
+              </button>
             </div>
           </div>
         </div>
