@@ -195,15 +195,18 @@ function parseWgerInstructions(description: string): string[] {
     .slice(0, 8);
 }
 
+function getLangId(lang: unknown): number {
+  if (typeof lang === 'number') return lang;
+  if (typeof lang === 'object' && lang !== null) return Number((lang as Record<string, unknown>).id ?? 0);
+  return 0;
+}
+
 function mapWgerExercise(raw: Record<string, unknown>, bodyPart: string): Exercise | null {
   const translations = raw.translations as Array<Record<string, unknown>> ?? [];
-  const ptTranslation = translations.find(
-    (t) => (t.language as Record<string, unknown>)?.id === WGER_LANGUAGE_PT
-  );
-  const enTranslation = translations.find(
-    (t) => (t.language as Record<string, unknown>)?.id === 2
-  );
-  const translation = ptTranslation ?? enTranslation;
+  const ptTranslation = translations.find(t => getLangId(t.language) === WGER_LANGUAGE_PT);
+  const enTranslation = translations.find(t => getLangId(t.language) === 2);
+  // Fallback: use any translation available
+  const translation = ptTranslation ?? enTranslation ?? translations[0];
   if (!translation) return null;
 
   const name = String(translation.name ?? '').trim();
