@@ -434,6 +434,22 @@ export async function getExercisesByBodyPart(
   if (cached && cached.length >= 15) {
     const results = cached.map(mapDbRow);
     _categoryCache.set(cacheKey, results);
+
+    // Fetch Wger in background if not yet present for this body part
+    const hasWger = cached.some((r: Record<string, unknown>) => String(r.id ?? '').startsWith('wger_'));
+    if (!hasWger) {
+      (async () => {
+        try {
+          const fromWger = await fetchFromWger(bodyPart);
+          if (fromWger.length === 0) return;
+          const merged = mergeExercises(results, fromWger);
+          await saveToSupabase(fromWger);
+          _categoryCache.set(cacheKey, merged);
+          onTranslated?.(merged);
+        } catch { /* silent */ }
+      })();
+    }
+
     return results;
   }
 
