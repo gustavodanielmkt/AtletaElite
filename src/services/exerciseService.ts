@@ -17,7 +17,7 @@ export interface Exercise {
 
 const RAPIDAPI_KEY = import.meta.env.VITE_RAPIDAPI_KEY;
 const RAPIDAPI_HOST = import.meta.env.VITE_RAPIDAPI_HOST;
-const WGER_BASE = 'https://wger.de/api/v2';
+const WGER_BASE = '/api/wger';
 const WGER_LANGUAGE_PT = 7;
 
 const BODY_PART_CATEGORY_MAP: Record<string, string[]> = {
@@ -150,10 +150,14 @@ async function fetchFromApi(endpoint: string): Promise<Exercise[]> {
 
 let _wgerCategories: Record<string, number> | null = null;
 
+function wgerUrl(endpoint: string): string {
+  return `${WGER_BASE}?path=${encodeURIComponent(endpoint)}`;
+}
+
 async function getWgerCategories(): Promise<Record<string, number>> {
   if (_wgerCategories) return _wgerCategories;
   try {
-    const res = await fetch(`${WGER_BASE}/exercisecategory/?format=json`);
+    const res = await fetch(wgerUrl('exercisecategory/?format=json'));
     if (!res.ok) throw new Error('Wger categories unavailable');
     const data = await res.json();
     const map: Record<string, number> = {};
@@ -238,7 +242,7 @@ async function fetchFromWger(bodyPart: string): Promise<Exercise[]> {
     await Promise.all(
       ids.map(async (catId) => {
         const res = await fetch(
-          `${WGER_BASE}/exerciseinfo/?format=json&category=${catId}&limit=20`,
+          wgerUrl(`exerciseinfo/?format=json&category=${catId}&limit=20`),
           { signal: AbortSignal.timeout(8000) }
         );
         if (!res.ok) return;
