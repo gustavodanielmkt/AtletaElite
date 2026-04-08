@@ -464,10 +464,12 @@ export async function getExercisesByBodyPart(
         try {
           const fromWger = await fetchFromWger(bodyPart);
           if (fromWger.length === 0) return;
-          const merged = mergeExercises(results, fromWger);
           await saveToSupabase(fromWger);
-          _categoryCache.set(cacheKey, merged);
-          onTranslated?.(merged);
+          // Translate all new exercises via Gemini
+          translateAndUpdate(fromWger, cacheKey, (translated) => {
+            _categoryCache.set(cacheKey, mergeExercises(results, translated));
+            onTranslated?.(mergeExercises(results, translated));
+          });
         } catch { /* silent */ }
       })();
     }
@@ -490,12 +492,8 @@ export async function getExercisesByBodyPart(
         const fromWger = wgerResult.status === 'fulfilled' ? wgerResult.value : [];
         const merged = mergeExercises(fromEdb, fromWger);
         await saveToSupabase(merged);
-        const needsTranslation = merged.filter(e => e.source === 'exercisedb');
-        if (needsTranslation.length > 0) {
-          translateAndUpdate(needsTranslation, cacheKey, onTranslated);
-        } else {
-          _categoryCache.set(cacheKey, merged);
-          onTranslated?.(merged);
+        if (merged.length > 0) {
+          translateAndUpdate(merged, cacheKey, onTranslated);
         }
       } catch { /* keep partial */ }
     })();
@@ -516,10 +514,9 @@ export async function getExercisesByBodyPart(
   await saveToSupabase(merged);
   _categoryCache.set(cacheKey, merged);
 
-  // Only translate ExerciseDB exercises (Wger already has PT or will translate in background)
-  const needsTranslation = merged.filter(e => e.source === 'exercisedb');
-  if (needsTranslation.length > 0) {
-    translateAndUpdate(needsTranslation, cacheKey, onTranslated);
+  // Translate all exercises (ExerciseDB + Wger) via Gemini
+  if (merged.length > 0) {
+    translateAndUpdate(merged, cacheKey, onTranslated);
   }
 
   return merged;
