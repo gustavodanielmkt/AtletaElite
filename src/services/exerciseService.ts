@@ -307,6 +307,37 @@ async function saveToSupabase(exercises: Exercise[]): Promise<void> {
     .upsert(exercises.map(toDbRow), { onConflict: 'id' });
 }
 
+// Enrich Wger exercises without images by searching ExerciseDB by name (max 5 per call)
+async function enrichWgerImages(exercises: Exercise[]): Promise<Exercise[]> {
+  const needsImage = exercises.filter(e => e.source === 'wger' && !e.gifUrl).slice(0, 5);
+  if (needsImage.length === 0) return exercises;
+
+  const enriched = await Promise.allSettled(
+    needsImage.map(async (ex) => {
+      // Extract original English name from "PT (EN)" format
+      const match = ex.name.match(/\(([^)]+)\)$/);
+      const query = (match ? match[1] : ex.name).toLowerCase().trim();
+      const results = await fetchFromApi(
+        `/exercises/name/${encodeURIComponent(query)}?limit=1&offset=0`
+      );
+      if (results.length > 0) {
+        return { id: ex.id, gifUrl: `/api/exercise-image?id=${results[0].id}` };
+      }
+      return null;
+    })
+  );
+
+  const updates = new Map<string, string>();
+  for (const r of enriched) {
+    if (r.status === 'fulfilled' && r.value) {
+      updates.set(r.value.id, r.value.gifUrl);
+    }
+  }
+  if (updates.size === 0) return exercises;
+
+  return exercises.map(e => updates.has(e.id) ? { ...e, gifUrl: updates.get(e.id)! } : e);
+}
+
 async function translateAndUpdate(
   exercises: Exercise[],
   category: string,
@@ -327,9 +358,12 @@ async function translateAndUpdate(
       })
     );
 
-    await saveToSupabase(translated);
-    _categoryCache.set(category, translated);
-    onDone?.(translated);
+    // Enrich images for Wger exercises in background
+    const enriched = await enrichWgerImages(translated);
+
+    await saveToSupabase(enriched);
+    _categoryCache.set(category, enriched);
+    onDone?.(enriched);
   } catch (err) {
     console.warn('[exerciseService] Background translation failed:', err);
   }
@@ -582,6 +616,20 @@ export async function saveTemplate(
   if (err) return err;
 
   return { programId: program.id };
+}
+
+export async function updateExerciseImage(
+  exerciseId: string,
+  gifUrl: string
+): Promise<{ error: string } | null> {
+  const { error } = await supabase
+    .from('exercises')
+    .update({ gif_url: gifUrl || null })
+    .eq('id', exerciseId);
+
+  if (error) return { error: error.message };
+  _categoryCache.clear();
+  return null;
 }
 
 export async function getPhysioAthletes(physioId: string): Promise<Athlete[]> {

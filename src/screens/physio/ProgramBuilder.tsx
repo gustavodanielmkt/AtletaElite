@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { ArrowLeft, Search, GripVertical, PlayCircle, PlusCircle, Edit, LineChart, User, X, Loader2, CheckCircle2, AlertCircle, ChevronLeft, ChevronRight, BookTemplate, Users, Info, Dumbbell } from 'lucide-react';
+import { ArrowLeft, Search, GripVertical, PlayCircle, PlusCircle, Edit, LineChart, User, X, Loader2, CheckCircle2, AlertCircle, ChevronLeft, ChevronRight, BookTemplate, Users, Info, Dumbbell, ImagePlus } from 'lucide-react';
 import {
   searchExercises, getExercisesByBodyPart, saveProgram, saveTemplate,
-  getPhysioAthletes, getPhysioTemplates, createCustomExercise,
+  getPhysioAthletes, getPhysioTemplates, createCustomExercise, updateExerciseImage,
   ALL_BODY_PARTS, type Exercise, type Program, type Athlete,
 } from '../../services/exerciseService';
 import { supabase } from '../../lib/supabase';
@@ -17,6 +17,7 @@ const BODY_PART_PT: Record<string, string> = {
 
 function exerciseImgSrc(exercise: Exercise): string {
   if (exercise.gifUrl?.startsWith('http')) return exercise.gifUrl;
+  if (exercise.gifUrl?.startsWith('/api/')) return exercise.gifUrl;
   if (exercise.id.startsWith('wger_') || exercise.id.startsWith('seed_') || exercise.id.startsWith('custom_')) return '';
   return `/api/exercise-image?id=${exercise.id}`;
 }
@@ -117,6 +118,26 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
   const [loadingTemplates, setLoadingTemplates] = useState(false);
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [templateSuccess, setTemplateSuccess] = useState(false);
+
+  // Edit image
+  const [editingImageId, setEditingImageId] = useState<string | null>(null);
+  const [editingImageUrl, setEditingImageUrl] = useState('');
+  const [savingImage, setSavingImage] = useState(false);
+
+  const handleSaveImage = async () => {
+    if (!editingImageId) return;
+    setSavingImage(true);
+    await updateExerciseImage(editingImageId, editingImageUrl.trim());
+    setSavingImage(false);
+    // Update preview and browse list locally
+    if (previewExercise?.id === editingImageId) {
+      setPreviewExercise(prev => prev ? { ...prev, gifUrl: editingImageUrl.trim() } : prev);
+    }
+    setBrowseExercises(prev => prev.map(e => e.id === editingImageId ? { ...e, gifUrl: editingImageUrl.trim() } : e));
+    setSelected(prev => prev.map(e => e.id === editingImageId ? { ...e, gifUrl: editingImageUrl.trim() } : e));
+    setEditingImageId(null);
+    setEditingImageUrl('');
+  };
 
   // Custom exercise modal
   const [showCustomModal, setShowCustomModal] = useState(false);
@@ -584,6 +605,45 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
                   ))}
                 </div>
               )}
+              {/* Edit image section */}
+              {editingImageId === previewExercise.id ? (
+                <div className="mb-4 space-y-2">
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">URL da imagem</p>
+                  <input
+                    type="url"
+                    value={editingImageUrl}
+                    onChange={e => setEditingImageUrl(e.target.value)}
+                    placeholder="https://exemplo.com/imagem.gif"
+                    className="w-full bg-slate-800 rounded-xl px-4 py-3 text-sm text-slate-100 placeholder-slate-500 outline-none focus:ring-2 focus:ring-[#ccff00]/50"
+                    autoFocus
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleSaveImage}
+                      disabled={savingImage}
+                      className="flex-1 py-3 bg-[#ccff00] text-slate-950 font-black rounded-xl text-sm flex items-center justify-center gap-2 disabled:opacity-60"
+                    >
+                      {savingImage ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+                      Salvar
+                    </button>
+                    <button
+                      onClick={() => { setEditingImageId(null); setEditingImageUrl(''); }}
+                      className="px-4 py-3 bg-slate-800 text-slate-400 font-bold rounded-xl text-sm"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={() => { setEditingImageId(previewExercise.id); setEditingImageUrl(previewExercise.gifUrl ?? ''); }}
+                  className="w-full mb-3 py-3 border border-slate-700 text-slate-400 hover:border-[#ccff00]/50 hover:text-[#ccff00] font-bold rounded-xl text-sm transition-colors flex items-center justify-center gap-2"
+                >
+                  <ImagePlus size={15} />
+                  {exerciseImgSrc(previewExercise) ? 'Trocar imagem' : 'Adicionar imagem'}
+                </button>
+              )}
+
               <button
                 onClick={() => setPreviewExercise(null)}
                 className="w-full py-4 bg-slate-800 text-slate-300 font-bold rounded-xl hover:bg-slate-700 transition-colors"
