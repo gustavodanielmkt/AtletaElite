@@ -22,7 +22,7 @@ const WGER_LANGUAGE_PT = 7;
 
 const BODY_PART_CATEGORY_MAP: Record<string, string[]> = {
   warmup:     ['cardio'],
-  mobility:   ['back', 'neck', 'shoulders'],
+  mobility:   ['back', 'neck', 'shoulders', 'upper legs', 'lower legs'],
   strength:   ['chest', 'lower arms', 'lower legs', 'upper arms', 'upper legs', 'waist'],
   recovery:   ['back', 'lower legs', 'upper legs'],
   stretching: ['stretching'],
