@@ -414,6 +414,7 @@ export interface ProgramExercise extends Exercise {
   sets: number;
   reps: number;
   rest: string;
+  weight: string;
   sortOrder: number;
 }
 
@@ -562,6 +563,7 @@ type ExerciseRow = {
   sets: number;
   reps: number;
   rest: string;
+  weight: string;
   sortOrder: number;
 };
 
@@ -573,6 +575,7 @@ async function insertProgramExercises(programId: string, exercises: ExerciseRow[
     sets:        e.sets,
     reps:        e.reps,
     rest:        e.rest,
+    weight:      e.weight || null,
     sort_order:  e.sortOrder,
   }));
   const { error } = await supabase.from('program_exercises').insert(rows);
@@ -661,7 +664,7 @@ export async function getPhysioTemplates(physioId: string): Promise<Program[]> {
     programs.map(async (p: any) => {
       const { data: rows } = await supabase
         .from('program_exercises')
-        .select(`id, phase, sets, reps, rest, sort_order,
+        .select(`id, phase, sets, reps, rest, weight, sort_order,
           exercises(id, name, body_part, target, equipment, gif_url, secondary_muscles, instructions)`)
         .eq('program_id', p.id)
         .order('sort_order');
@@ -674,6 +677,7 @@ export async function getPhysioTemplates(physioId: string): Promise<Program[]> {
           sets:              r.sets ?? 3,
           reps:              r.reps ?? 12,
           rest:              r.rest ?? '30s',
+          weight:            r.weight ?? '',
           sortOrder:         r.sort_order,
           id:                r.exercises.id,
           name:              r.exercises.name,
@@ -711,6 +715,7 @@ export async function getActiveProgram(athleteId: string): Promise<Program | nul
       sets,
       reps,
       rest,
+      weight,
       sort_order,
       exercises (
         id, name, body_part, target, equipment,
@@ -728,6 +733,7 @@ export async function getActiveProgram(athleteId: string): Promise<Program | nul
       sets:              r.sets ?? 3,
       reps:              r.reps ?? 12,
       rest:              r.rest ?? '30s',
+      weight:            r.weight ?? '',
       sortOrder:         r.sort_order,
       id:                r.exercises.id,
       name:              r.exercises.name,

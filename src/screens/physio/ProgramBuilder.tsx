@@ -77,6 +77,7 @@ interface SelectedExercise extends Exercise {
   sets: number;
   reps: number;
   rest: string;
+  weight: string;
 }
 
 function useDebounce(value: string, delay: number) {
@@ -197,7 +198,7 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
 
   const addExercise = useCallback((exercise: Exercise) => {
     if (selected.find(s => s.id === exercise.id)) return;
-    setSelected(prev => [...prev, { ...exercise, phase: pendingPhase, sets: 3, reps: 12, rest: '30s' }]);
+    setSelected(prev => [...prev, { ...exercise, phase: pendingPhase, sets: 3, reps: 12, rest: '30s', weight: '' }]);
     setPreviewExercise(null);
   }, [selected, pendingPhase]);
 
@@ -208,7 +209,7 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
   };
 
   const exerciseRows = () => selected.map((e, i) => ({
-    exerciseId: e.id, phase: e.phase, sets: e.sets, reps: e.reps, rest: e.rest, sortOrder: i,
+    exerciseId: e.id, phase: e.phase, sets: e.sets, reps: e.reps, rest: e.rest, weight: e.weight ?? '', sortOrder: i,
   }));
 
   const validate = (): string | null => {
@@ -304,7 +305,7 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
     setSelected(template.exercises.map(e => ({
       id: e.id, name: e.name, bodyPart: e.bodyPart, target: e.target,
       equipment: e.equipment, gifUrl: e.gifUrl, secondaryMuscles: e.secondaryMuscles,
-      instructions: e.instructions, phase: e.phase, sets: e.sets, reps: e.reps, rest: e.rest,
+      instructions: e.instructions, phase: e.phase, sets: e.sets, reps: e.reps, rest: e.rest, weight: e.weight ?? '',
     })));
     setShowTemplates(false);
   };
@@ -542,7 +543,7 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
                             </button>
                           ))}
                         </div>
-                        <div className="grid grid-cols-3 gap-2">
+                        <div className="grid grid-cols-2 gap-2 mb-2">
                           <div className="flex flex-col">
                             <span className="text-[10px] text-slate-500 uppercase font-bold">Séries</span>
                             <input type="number" value={exercise.sets} onChange={e => updateField(exercise.id, 'sets', Number(e.target.value))} className="bg-slate-800 border-none rounded-lg p-2 text-sm focus:ring-1 focus:ring-[#ccff00] outline-none text-white" />
@@ -551,9 +552,15 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
                             <span className="text-[10px] text-slate-500 uppercase font-bold">Reps</span>
                             <input type="number" value={exercise.reps} onChange={e => updateField(exercise.id, 'reps', Number(e.target.value))} className="bg-slate-800 border-none rounded-lg p-2 text-sm focus:ring-1 focus:ring-[#ccff00] outline-none text-white" />
                           </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
                           <div className="flex flex-col">
                             <span className="text-[10px] text-slate-500 uppercase font-bold">Descanso</span>
                             <input type="text" value={exercise.rest} onChange={e => updateField(exercise.id, 'rest', e.target.value)} className="bg-slate-800 border-none rounded-lg p-2 text-sm focus:ring-1 focus:ring-[#ccff00] outline-none text-white" />
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="text-[10px] text-slate-500 uppercase font-bold">Peso</span>
+                            <input type="text" value={exercise.weight} onChange={e => updateField(exercise.id, 'weight', e.target.value)} placeholder="ex: 20kg" className="bg-slate-800 border-none rounded-lg p-2 text-sm focus:ring-1 focus:ring-[#ccff00] outline-none text-white placeholder-slate-600" />
                           </div>
                         </div>
                       </div>

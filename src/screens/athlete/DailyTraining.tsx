@@ -165,10 +165,11 @@ export default function DailyTraining({ navigate }: { navigate: (screen: string)
                         {ex.name}
                       </p>
                       <p className="text-slate-400 text-xs mt-0.5 capitalize">{ex.target} · {ex.equipment}</p>
-                      <div className="flex gap-3 mt-2">
+                      <div className="flex gap-2 mt-2 flex-wrap">
                         <span className="text-[11px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full">{ex.sets} séries</span>
                         <span className="text-[11px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full">{ex.reps} reps</span>
                         <span className="text-[11px] font-bold text-slate-400 bg-slate-800 px-2 py-0.5 rounded-full">{ex.rest}</span>
+                        {ex.weight && <span className="text-[11px] font-bold text-[#ccff00] bg-[#ccff00]/10 px-2 py-0.5 rounded-full">{ex.weight}</span>}
                       </div>
                     </div>
 
