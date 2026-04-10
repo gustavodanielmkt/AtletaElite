@@ -16,12 +16,35 @@ function gifSrc(id: string): string {
   return `/api/exercise-image?id=${id}`;
 }
 
+const SESSION_PHASE_KEY = 'dt_activePhase';
+const SESSION_COMPLETED_KEY = 'dt_completed';
+const SESSION_PROGRAM_KEY = 'dt_programId';
+
 export default function DailyTraining({ navigate }: { navigate: (screen: string) => void }) {
   const [program, setProgram] = useState<Program | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activePhase, setActivePhase] = useState<Phase>('warmup');
-  const [completed, setCompleted] = useState<Set<string>>(new Set());
+
+  const [activePhase, setActivePhase] = useState<Phase>(() => {
+    return (sessionStorage.getItem(SESSION_PHASE_KEY) as Phase) || 'warmup';
+  });
+
+  const [completed, setCompleted] = useState<Set<string>>(() => {
+    try {
+      const saved = sessionStorage.getItem(SESSION_COMPLETED_KEY);
+      return saved ? new Set(JSON.parse(saved)) : new Set();
+    } catch { return new Set(); }
+  });
+
+  // Persist activePhase
+  useEffect(() => {
+    sessionStorage.setItem(SESSION_PHASE_KEY, activePhase);
+  }, [activePhase]);
+
+  // Persist completed set
+  useEffect(() => {
+    sessionStorage.setItem(SESSION_COMPLETED_KEY, JSON.stringify([...completed]));
+  }, [completed]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -30,9 +53,26 @@ export default function DailyTraining({ navigate }: { navigate: (screen: string)
         .then((p) => {
           setProgram(p);
           if (p) {
-            // Auto-select first phase that has exercises
-            const firstPhase = PHASES.find(ph => p.exercises.some((e: ProgramExercise) => e.phase === ph.key));
-            if (firstPhase) setActivePhase(firstPhase.key);
+            const savedProgramId = sessionStorage.getItem(SESSION_PROGRAM_KEY);
+            // If it's a different program, reset phase and completed
+            if (savedProgramId !== p.id) {
+              sessionStorage.setItem(SESSION_PROGRAM_KEY, p.id);
+              sessionStorage.removeItem(SESSION_COMPLETED_KEY);
+              setCompleted(new Set());
+              const firstPhase = PHASES.find(ph => p.exercises.some((e: ProgramExercise) => e.phase === ph.key));
+              if (firstPhase) {
+                setActivePhase(firstPhase.key);
+                sessionStorage.setItem(SESSION_PHASE_KEY, firstPhase.key);
+              }
+            } else {
+              // Same program — restore saved phase if it has exercises
+              const savedPhase = sessionStorage.getItem(SESSION_PHASE_KEY) as Phase;
+              const phaseHasExercises = p.exercises.some((e: ProgramExercise) => e.phase === savedPhase);
+              if (!phaseHasExercises) {
+                const firstPhase = PHASES.find(ph => p.exercises.some((e: ProgramExercise) => e.phase === ph.key));
+                if (firstPhase) setActivePhase(firstPhase.key);
+              }
+            }
           }
         })
         .catch(() => setError('Não foi possível carregar o programa de treino.'))
