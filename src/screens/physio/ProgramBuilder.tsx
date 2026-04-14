@@ -12,7 +12,7 @@ const BODY_PART_PT: Record<string, string> = {
   back: 'Costas', cardio: 'Cardio', chest: 'Peito', neck: 'Pescoço',
   shoulders: 'Ombros', 'upper arms': 'Braços', 'lower arms': 'Antebraços',
   'upper legs': 'Coxas', 'lower legs': 'Panturrilhas', waist: 'Abdômen',
-  stretching: 'Alongamentos',
+  stretching: 'Alongamentos', mobility: 'Mobilidade', physiotherapy: 'Fisioterapia',
 };
 
 function exerciseImgSrc(exercise: Exercise): string {
@@ -28,7 +28,9 @@ const BODY_PARTS_LIST = [
   { key: 'chest', label: 'Peito' },
   { key: 'lower arms', label: 'Antebraços' },
   { key: 'lower legs', label: 'Panturrilhas' },
+  { key: 'mobility', label: 'Mobilidade' },
   { key: 'neck', label: 'Pescoço' },
+  { key: 'physiotherapy', label: 'Fisioterapia' },
   { key: 'shoulders', label: 'Ombros' },
   { key: 'stretching', label: 'Alongamentos' },
   { key: 'upper arms', label: 'Braços' },
@@ -92,6 +94,7 @@ function useDebounce(value: string, delay: number) {
 export default function ProgramBuilder({ navigate }: { navigate: (screen: string) => void }) {
   const [physioId, setPhysioId] = useState<string | null>(null);
   const [activeBodyPart, setActiveBodyPart] = useState<string>('chest');
+  const [legSubFilter, setLegSubFilter] = useState<'all' | 'quads' | 'hamstrings'>('all');
   const [query, setQuery] = useState('');
   const debouncedQuery = useDebounce(query, 400);
 
@@ -143,7 +146,7 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
   // Custom exercise modal
   const [showCustomModal, setShowCustomModal] = useState(false);
   const [customForm, setCustomForm] = useState({
-    name: '', bodyPart: 'stretching', target: '', equipment: 'body weight', gifUrl: '',
+    name: '', bodyPart: 'physiotherapy', target: '', equipment: 'body weight', gifUrl: '',
     instructionsRaw: '',
   });
   const [savingCustom, setSavingCustom] = useState(false);
@@ -194,7 +197,20 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
     searchExercises(debouncedQuery).then(setSearchResults).finally(() => setLoading(false));
   }, [debouncedQuery]);
 
+  // Reset leg sub-filter when tab changes
+  useEffect(() => { setLegSubFilter('all'); }, [activeBodyPart]);
+
   const displayExercises = debouncedQuery ? searchResults : browseExercises;
+
+  // Sub-filter for upper legs (quadriceps vs hamstrings/glutes)
+  const filteredExercises = (activeBodyPart === 'upper legs' && !debouncedQuery && legSubFilter !== 'all')
+    ? displayExercises.filter(e => {
+        const t = e.target.toLowerCase();
+        if (legSubFilter === 'quads') return t.includes('quad');
+        if (legSubFilter === 'hamstrings') return t.includes('hamstring') || t.includes('glute');
+        return true;
+      })
+    : displayExercises;
 
   const addExercise = useCallback((exercise: Exercise) => {
     if (selected.find(s => s.id === exercise.id)) return;
@@ -296,7 +312,7 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
     setSelected(prev => [...prev, { ...ex, phase: pendingPhase, sets: 3, reps: 12, rest: '30s' }]);
     localCache.current.delete(ex.bodyPart);
     setShowCustomModal(false);
-    setCustomForm({ name: '', bodyPart: 'stretching', target: '', equipment: 'body weight', gifUrl: '', instructionsRaw: '' });
+    setCustomForm({ name: '', bodyPart: 'physiotherapy', target: '', equipment: 'body weight', gifUrl: '', instructionsRaw: '' });
   };
 
   // Load a template into the builder
@@ -424,7 +440,7 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
         )}
 
         {/* Exercise browser */}
-        {displayExercises.length > 0 && (
+        {filteredExercises.length > 0 && (
           <div className="px-4 py-2">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest">
@@ -438,6 +454,29 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
                 Criar
               </button>
             </div>
+
+            {/* Sub-filter for Coxas */}
+            {activeBodyPart === 'upper legs' && !debouncedQuery && (
+              <div className="flex gap-2 mb-3">
+                {([
+                  { key: 'all', label: 'Todos' },
+                  { key: 'quads', label: 'Quadríceps' },
+                  { key: 'hamstrings', label: 'Posteriores' },
+                ] as const).map(f => (
+                  <button
+                    key={f.key}
+                    onClick={() => setLegSubFilter(f.key)}
+                    className={`text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 rounded-full border transition-all ${
+                      legSubFilter === f.key
+                        ? 'bg-[#ccff00]/20 text-[#ccff00] border-[#ccff00]/50'
+                        : 'border-slate-700 text-slate-500 hover:border-slate-500 hover:text-slate-300'
+                    }`}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+            )}
 
             {/* Phase chips — select once, tap to add */}
             <div className="flex gap-2 flex-wrap mb-4">
@@ -458,7 +497,7 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              {displayExercises.map(exercise => {
+              {filteredExercises.map(exercise => {
                 const isAdded = !!selected.find(s => s.id === exercise.id);
                 return (
                   <div key={exercise.id} className="relative">
@@ -500,8 +539,19 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
           </div>
         )}
 
-        {!loading && displayExercises.length === 0 && debouncedQuery && (
+        {!loading && filteredExercises.length === 0 && debouncedQuery && (
           <p className="text-center text-slate-500 py-12">Nenhum exercício encontrado para "{debouncedQuery}"</p>
+        )}
+
+        {!loading && filteredExercises.length === 0 && !debouncedQuery && (activeBodyPart === 'physiotherapy' || activeBodyPart === 'mobility') && (
+          <div className="px-4 py-12 text-center">
+            <p className="text-slate-500 text-sm mb-1">Nenhum exercício nesta categoria ainda.</p>
+            <p className="text-slate-600 text-xs">
+              {activeBodyPart === 'physiotherapy'
+                ? 'Crie um exercício personalizado usando o botão "Criar".'
+                : 'Execute o SQL de migração para carregar os exercícios de mobilidade.'}
+            </p>
+          </div>
         )}
 
         {/* Selected exercises */}

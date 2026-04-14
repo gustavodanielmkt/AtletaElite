@@ -21,11 +21,12 @@ const WGER_BASE = '/api/wger';
 const WGER_LANGUAGE_PT = 7;
 
 const BODY_PART_CATEGORY_MAP: Record<string, string[]> = {
-  warmup:     ['cardio'],
-  mobility:   ['back', 'neck', 'shoulders', 'upper legs', 'lower legs'],
-  strength:   ['chest', 'lower arms', 'lower legs', 'upper arms', 'upper legs', 'waist'],
-  recovery:   ['back', 'lower legs', 'upper legs'],
-  stretching: ['stretching'],
+  warmup:        ['cardio'],
+  mobility:      ['mobility'],
+  strength:      ['chest', 'lower arms', 'lower legs', 'upper arms', 'upper legs', 'waist'],
+  recovery:      ['back', 'lower legs', 'upper legs'],
+  stretching:    ['stretching'],
+  physiotherapy: ['physiotherapy'],
 };
 
 // Map from our body part names to Wger category names
@@ -40,7 +41,9 @@ const WGER_BODY_PART_MAP: Record<string, string[]> = {
   'upper arms': ['Arms'],
   'upper legs': ['Legs'],
   waist:        ['Abs'],
-  stretching:   [], // Only from seeded data
+  stretching:    [], // Only from seeded data
+  mobility:      [], // Only from seeded data
+  physiotherapy: [], // Only custom exercises
 };
 
 // ── Corruption cleanup ─────────────────────────────────────────
@@ -403,7 +406,8 @@ const _categoryCache = new Map<string, Exercise[]>();
 
 export const ALL_BODY_PARTS = [
   'back', 'cardio', 'chest', 'lower arms', 'lower legs',
-  'neck', 'shoulders', 'stretching', 'upper arms', 'upper legs', 'waist',
+  'mobility', 'neck', 'physiotherapy', 'shoulders', 'stretching',
+  'upper arms', 'upper legs', 'waist',
 ] as const;
 
 export type BodyPart = typeof ALL_BODY_PARTS[number];
@@ -466,12 +470,26 @@ export async function getExercisesByBodyPart(
 
   await cleanupCorruptedRows();
 
-  // Stretching: only seeded/custom data from Supabase, no external API
-  if (bodyPart === 'stretching') {
+  // Stretching / Mobility: only seeded data from Supabase, no external API
+  if (bodyPart === 'stretching' || bodyPart === 'mobility') {
     const { data: cached } = await supabase
       .from('exercises')
       .select('*')
-      .eq('body_part', 'stretching')
+      .eq('body_part', bodyPart)
+      .order('name')
+      .limit(60);
+
+    const results = (cached ?? []).map(mapDbRow);
+    _categoryCache.set(cacheKey, results);
+    return results;
+  }
+
+  // Physiotherapy: only custom exercises from Supabase, no external API
+  if (bodyPart === 'physiotherapy') {
+    const { data: cached } = await supabase
+      .from('exercises')
+      .select('*')
+      .eq('body_part', 'physiotherapy')
       .order('name')
       .limit(60);
 
