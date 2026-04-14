@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Bell, Clock, MapPin, ChevronRight, Home, Dumbbell, LineChart, MessageSquare, User, Lock, X, Link2, Loader2, CheckCircle2 } from 'lucide-react';
+import { Bell, Clock, MapPin, ChevronRight, Home, Dumbbell, LineChart, MessageSquare, User, Lock, X, Link2, Loader2, CheckCircle2, Shield } from 'lucide-react';
 
-const APP_VERSION = '1.5.2';
+const APP_VERSION = '1.6.0';
 import { supabase } from '../../lib/supabase';
+import { getAthleteClubInfo, getTodayCheckIn, readinessColor, type AthleteClubInfo } from '../../services/clubService';
 
 
 export default function AthleteDashboard({ navigate }: { navigate: (screen: string) => void }) {
@@ -66,6 +67,8 @@ export default function AthleteDashboard({ navigate }: { navigate: (screen: stri
   const formattedDate = `${weekdays[today.getDay()]}, ${today.getDate()} de ${months[today.getMonth()]}`;
 
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [clubInfo, setClubInfo] = useState<AthleteClubInfo | null>(null);
+  const [todayScore, setTodayScore] = useState<number | null>(null);
 
   useEffect(() => {
     const getProfile = async () => {
@@ -78,6 +81,13 @@ export default function AthleteDashboard({ navigate }: { navigate: (screen: stri
           .single();
         if (data?.avatar_url) setAvatarUrl(data.avatar_url);
         setIsLimited(!data?.physio_id);
+
+        const [ci, checkin] = await Promise.all([
+          getAthleteClubInfo(session.user.id),
+          getTodayCheckIn(session.user.id),
+        ]);
+        setClubInfo(ci);
+        setTodayScore(checkin?.readinessScore ?? null);
       }
     };
     getProfile();
@@ -99,6 +109,35 @@ export default function AthleteDashboard({ navigate }: { navigate: (screen: stri
           </button>
         </div>
       </header>
+
+      {/* Club + readiness badge */}
+      {(clubInfo || todayScore !== null) && (
+        <div className="bg-slate-900/60 border-b border-slate-800 px-4 py-2 flex items-center gap-3 sticky top-[73px] z-10 backdrop-blur-md">
+          {clubInfo && (
+            <div className="flex items-center gap-1.5 flex-1 min-w-0">
+              <Shield size={12} className="text-primary flex-shrink-0" />
+              <span className="text-[10px] font-bold text-primary uppercase tracking-widest truncate">{clubInfo.club.name}</span>
+              {clubInfo.jerseyNumber && (
+                <span className="text-[10px] font-bold text-slate-500">#{clubInfo.jerseyNumber}</span>
+              )}
+            </div>
+          )}
+          {todayScore !== null && (() => {
+            const rc = readinessColor(todayScore);
+            return (
+              <button onClick={() => navigate('daily-checkin')} className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold border ${rc.bg} ${rc.text}`} style={{ borderColor: 'transparent' }}>
+                <span className="uppercase tracking-widest">{rc.label}</span>
+                <span className="text-sm font-black">{todayScore}</span>
+              </button>
+            );
+          })()}
+          {todayScore === null && (
+            <button onClick={() => navigate('daily-checkin')} className="text-[10px] font-bold text-slate-500 border border-slate-700 px-3 py-1 rounded-full hover:border-primary hover:text-primary transition-colors">
+              Fazer check-in
+            </button>
+          )}
+        </div>
+      )}
 
       {isLimited && (
         <div className="bg-amber-500/10 border-b border-amber-500/20 px-4 py-3 flex items-center justify-between sticky top-[73px] z-10 backdrop-blur-md">

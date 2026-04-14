@@ -15,6 +15,8 @@ import AnamnesisReport from './screens/physio/reports/AnamnesisReport';
 import AnamnesisWizard from './screens/athlete/anamnesis/AnamnesisWizard';
 import PhysioOnboarding from './screens/physio/PhysioOnboarding';
 import EditProfile from './screens/athlete/EditProfile';
+import ClubsList from './screens/physio/ClubsList';
+import ClubDetail from './screens/physio/ClubDetail';
 
 export default function App() {
   const [session, setSession] = useState<any>(null);
@@ -29,12 +31,20 @@ export default function App() {
   const [selectedAthleteId, setSelectedAthleteId] = useState<string | undefined>(
     () => sessionStorage.getItem('selectedAthleteId') || undefined
   );
+  const [selectedClubId, setSelectedClubId] = useState<string | undefined>(
+    () => sessionStorage.getItem('selectedClubId') || undefined
+  );
   const [loading, setLoading] = useState(true);
 
-  const navigate = (screen: string, athleteId?: string) => {
-    if (athleteId) {
-      setSelectedAthleteId(athleteId);
-      sessionStorage.setItem('selectedAthleteId', athleteId);
+  const navigate = (screen: string, id?: string) => {
+    if (id) {
+      if (screen === 'club-detail') {
+        setSelectedClubId(id);
+        sessionStorage.setItem('selectedClubId', id);
+      } else {
+        setSelectedAthleteId(id);
+        sessionStorage.setItem('selectedAthleteId', id);
+      }
     }
     setCurrentScreen(screen);
     if (!SCREENS_NO_PERSIST.includes(screen)) {
@@ -166,6 +176,8 @@ export default function App() {
         {currentScreen === 'physio-athlete-profile' && <PhysioAthleteProfile navigate={navigate} athleteId={selectedAthleteId} />}
         {currentScreen === 'program-builder' && <ProgramBuilder navigate={navigate} />}
         {currentScreen === 'anamnesis-report' && <AnamnesisReport navigate={navigate} athleteId={selectedAthleteId} />}
+        {currentScreen === 'clubs-list' && <ClubsList navigate={navigate} />}
+        {currentScreen === 'club-detail' && selectedClubId && <ClubDetail navigate={navigate} clubId={selectedClubId} />}
       </div>
     </div>
   );

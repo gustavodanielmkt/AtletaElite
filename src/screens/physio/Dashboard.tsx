@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Activity, Bell, AlertCircle, LayoutDashboard, Users, BarChart, User, LogOut, Copy, CheckCircle2, RefreshCw } from 'lucide-react';
+import { Activity, Bell, AlertCircle, LayoutDashboard, Users, BarChart, LogOut, Copy, CheckCircle2, RefreshCw, Shield } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { getPhysioDashboardStats, type PhysioDashboardStats } from '../../services/physioService';
 
-const APP_VERSION = '1.5.2';
+const APP_VERSION = '1.6.0';
 
 function generateInviteCode(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -268,6 +268,10 @@ export default function PhysioDashboard({ navigate }: { navigate: (screen: strin
             <Users size={24} />
             <span className="text-[10px] font-medium">Atletas</span>
           </button>
+          <button onClick={() => navigate('clubs-list')} className="flex flex-col items-center gap-1 py-2 px-3 text-slate-400">
+            <Shield size={24} />
+            <span className="text-[10px] font-medium">Clubes</span>
+          </button>
           <button onClick={() => navigate('program-builder')} className="flex flex-col items-center gap-1 py-2 px-3 text-slate-400">
             <Activity size={24} />
             <span className="text-[10px] font-medium">Programas</span>
@@ -275,10 +279,6 @@ export default function PhysioDashboard({ navigate }: { navigate: (screen: strin
           <button className="flex flex-col items-center gap-1 py-2 px-3 text-slate-400">
             <BarChart size={24} />
             <span className="text-[10px] font-medium">Relatórios</span>
-          </button>
-          <button className="flex flex-col items-center gap-1 py-2 px-3 text-slate-400">
-            <User size={24} />
-            <span className="text-[10px] font-medium">Perfil</span>
           </button>
         </div>
       </nav>
