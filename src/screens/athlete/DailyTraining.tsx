@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Calendar, PlayCircle, Home, Dumbbell, LineChart, User, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
-import { getActiveProgram, isVideoUrl, type Program, type ProgramExercise } from '../../services/exerciseService';
+import { getActiveProgram, isVideoUrl, isYouTubeUrl, getYouTubeVideoId, getYouTubeThumbnail, type Program, type ProgramExercise } from '../../services/exerciseService';
 import { supabase } from '../../lib/supabase';
 
 const PHASES = [
@@ -13,8 +13,14 @@ const PHASES = [
 type Phase = typeof PHASES[number]['key'];
 
 function exerciseMediaSrc(ex: ProgramExercise): string {
-  if (ex.gifUrl?.startsWith('http')) return ex.gifUrl;
-  if (ex.gifUrl?.startsWith('/api/')) return ex.gifUrl;
+  const url = ex.gifUrl;
+  if (url) {
+    if (isYouTubeUrl(url)) {
+      const id = getYouTubeVideoId(url);
+      return id ? getYouTubeThumbnail(id) : '';
+    }
+    if (url.startsWith('http') || url.startsWith('/api/')) return url;
+  }
   if (ex.id.startsWith('wger_') || ex.id.startsWith('seed_') || ex.id.startsWith('custom_')) return '';
   return `/api/exercise-image?id=${ex.id}`;
 }

@@ -361,8 +361,9 @@ async function translateAndUpdate(
       })
     );
 
-    // Enrich images for Wger exercises in background
-    const enriched = await enrichWgerImages(translated);
+    // Enrich images: first try ExerciseDB for Wger, then Pexels for the rest
+    const wgerEnriched = await enrichWgerImages(translated);
+    const enriched = await enrichWithPexels(wgerEnriched);
 
     await saveToSupabase(enriched);
     _categoryCache.set(category, enriched);
@@ -906,6 +907,74 @@ export async function uploadExerciseMedia(
 
 export function isVideoUrl(url: string): boolean {
   return /\.(mp4|mov|webm|ogg)(\?.*)?$/i.test(url);
+}
+
+// ── YouTube helpers ─────────────────────────────────────────────
+
+export function isYouTubeUrl(url: string): boolean {
+  return /(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/.test(url);
+}
+
+export function getYouTubeVideoId(url: string): string | null {
+  const m = url.match(/(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+  return m ? m[1] : null;
+}
+
+export function getYouTubeThumbnail(videoId: string): string {
+  return `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`;
+}
+
+export function getYouTubeEmbedUrl(videoId: string): string {
+  return `https://www.youtube.com/embed/${videoId}?rel=0&modestbranding=1`;
+}
+
+// ── Pexels enrichment ────────────────────────────────────────────
+
+async function enrichWithPexels(exercises: Exercise[]): Promise<Exercise[]> {
+  // Only enrich exercises that have no image and are not seed/custom
+  const needsImage = exercises.filter(
+    e => !e.gifUrl && !e.id.startsWith('seed_') && !e.id.startsWith('custom_')
+  ).slice(0, 5);
+
+  if (needsImage.length === 0) return exercises;
+
+  const enriched = await Promise.allSettled(
+    needsImage.map(async (ex) => {
+      // Extract base name (remove "(EN)" suffix if present)
+      const baseName = ex.name.replace(/\s*\([^)]+\)$/, '').trim();
+      try {
+        const res = await fetch(`/api/pexels?q=${encodeURIComponent(baseName + ' exercise fitness')}`);
+        if (!res.ok) return null;
+        const data = await res.json();
+        if (!data.photo) return null;
+        return { id: ex.id, gifUrl: data.photo as string };
+      } catch {
+        return null;
+      }
+    })
+  );
+
+  const updates = new Map<string, string>();
+  for (const r of enriched) {
+    if (r.status === 'fulfilled' && r.value) {
+      updates.set(r.value.id, r.value.gifUrl);
+    }
+  }
+  if (updates.size === 0) return exercises;
+
+  return exercises.map(e => updates.has(e.id) ? { ...e, gifUrl: updates.get(e.id)! } : e);
+}
+
+export async function searchPexelsImage(exerciseName: string): Promise<string | null> {
+  try {
+    const baseName = exerciseName.replace(/\s*\([^)]+\)$/, '').trim();
+    const res = await fetch(`/api/pexels?q=${encodeURIComponent(baseName + ' exercise fitness')}`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.photo ?? null;
+  } catch {
+    return null;
+  }
 }
 
 export async function deleteCustomExercise(exerciseId: string): Promise<{ error: string } | null> {

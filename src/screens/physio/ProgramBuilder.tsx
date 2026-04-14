@@ -3,7 +3,8 @@ import { ArrowLeft, Search, GripVertical, PlayCircle, PlusCircle, Edit, LineChar
 import {
   searchExercises, getExercisesByBodyPart, getCustomExercises, saveProgram, saveTemplate,
   getPhysioAthletes, getPhysioTemplates, createCustomExercise, updateExerciseImage,
-  uploadExerciseMedia, isVideoUrl,
+  uploadExerciseMedia, isVideoUrl, isYouTubeUrl, getYouTubeVideoId,
+  getYouTubeThumbnail, getYouTubeEmbedUrl, searchPexelsImage,
   ALL_BODY_PARTS, type Exercise, type Program, type Athlete,
 } from '../../services/exerciseService';
 import { supabase } from '../../lib/supabase';
@@ -17,14 +18,42 @@ const BODY_PART_PT: Record<string, string> = {
 };
 
 function exerciseMediaSrc(exercise: Exercise): string {
-  if (exercise.gifUrl?.startsWith('http')) return exercise.gifUrl;
-  if (exercise.gifUrl?.startsWith('/api/')) return exercise.gifUrl;
+  const url = exercise.gifUrl;
+  if (url) {
+    if (isYouTubeUrl(url)) {
+      const id = getYouTubeVideoId(url);
+      return id ? getYouTubeThumbnail(id) : '';
+    }
+    if (url.startsWith('http') || url.startsWith('/api/')) return url;
+  }
   if (exercise.id.startsWith('wger_') || exercise.id.startsWith('seed_') || exercise.id.startsWith('custom_')) return '';
   return `/api/exercise-image?id=${exercise.id}`;
 }
 
-function ExerciseMedia({ exercise, className, done }: { exercise: Exercise; className?: string; done?: boolean }) {
+function ExerciseMedia({
+  exercise, className, done, variant = 'card',
+}: {
+  exercise: Exercise; className?: string; done?: boolean; variant?: 'card' | 'preview';
+}) {
+  const rawUrl = exercise.gifUrl ?? '';
   const src = exerciseMediaSrc(exercise);
+
+  // Preview mode + YouTube → show iframe embed
+  if (variant === 'preview' && isYouTubeUrl(rawUrl)) {
+    const id = getYouTubeVideoId(rawUrl);
+    if (id) {
+      return (
+        <iframe
+          src={getYouTubeEmbedUrl(id)}
+          className={`w-full h-full ${className ?? ''}`}
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          allowFullScreen
+          title={exercise.name}
+        />
+      );
+    }
+  }
+
   if (!src) return <Dumbbell size={40} className={`text-slate-600 ${done ? 'opacity-50' : ''}`} />;
   if (isVideoUrl(src)) {
     return <video src={src} autoPlay loop muted playsInline className={`w-full h-full object-cover ${done ? 'opacity-70' : ''} ${className ?? ''}`} />;
@@ -137,6 +166,15 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
   const [editingImageId, setEditingImageId] = useState<string | null>(null);
   const [editingImageUrl, setEditingImageUrl] = useState('');
   const [savingImage, setSavingImage] = useState(false);
+  const [searchingPexels, setSearchingPexels] = useState(false);
+
+  const handlePexelsSearch = async () => {
+    if (!previewExercise) return;
+    setSearchingPexels(true);
+    const url = await searchPexelsImage(previewExercise.name);
+    setSearchingPexels(false);
+    if (url) setEditingImageUrl(url);
+  };
 
   const handleSaveImage = async () => {
     if (!editingImageId) return;
@@ -662,7 +700,7 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-end justify-center" onClick={() => setPreviewExercise(null)}>
           <div className="bg-slate-900 rounded-t-3xl w-full max-w-2xl max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="relative bg-slate-800 flex items-center justify-center rounded-t-3xl aspect-square overflow-hidden">
-              <ExerciseMedia exercise={previewExercise} className="rounded-t-3xl" />
+              <ExerciseMedia exercise={previewExercise} className="rounded-t-3xl" variant="preview" />
               <button onClick={() => setPreviewExercise(null)} className="absolute top-4 right-4 bg-black/50 rounded-full p-2 text-white"><X size={20} /></button>
             </div>
             <div className="p-5">
@@ -685,15 +723,43 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
               {/* Edit image section */}
               {editingImageId === previewExercise.id ? (
                 <div className="mb-4 space-y-2">
-                  <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">URL da imagem</p>
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">URL da mídia</p>
+
+                  {/* Pexels auto-search */}
+                  <button
+                    onClick={handlePexelsSearch}
+                    disabled={searchingPexels}
+                    className="w-full py-2.5 border border-slate-700 hover:border-[#ccff00]/50 text-slate-400 hover:text-[#ccff00] font-bold rounded-xl text-xs transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    {searchingPexels ? <Loader2 size={13} className="animate-spin" /> : <Search size={13} />}
+                    {searchingPexels ? 'Buscando...' : 'Buscar imagem automaticamente (Pexels)'}
+                  </button>
+
+                  {/* Preview URL typed/found */}
+                  {editingImageUrl && (
+                    <div className="rounded-xl overflow-hidden bg-slate-800 aspect-video flex items-center justify-center">
+                      {isYouTubeUrl(editingImageUrl) ? (
+                        (() => { const id = getYouTubeVideoId(editingImageUrl); return id
+                          ? <iframe src={getYouTubeEmbedUrl(id)} className="w-full h-full" allowFullScreen title="preview" />
+                          : null; })()
+                      ) : isVideoUrl(editingImageUrl) ? (
+                        <video src={editingImageUrl} autoPlay loop muted playsInline className="w-full h-full object-cover" />
+                      ) : (
+                        <img src={editingImageUrl} alt="preview" className="w-full h-full object-contain" />
+                      )}
+                    </div>
+                  )}
+
                   <input
                     type="url"
                     value={editingImageUrl}
                     onChange={e => setEditingImageUrl(e.target.value)}
-                    placeholder="https://exemplo.com/imagem.gif"
+                    placeholder="https://imagem.com/foto.jpg  ou  https://youtube.com/watch?v=..."
                     className="w-full bg-slate-800 rounded-xl px-4 py-3 text-sm text-slate-100 placeholder-slate-500 outline-none focus:ring-2 focus:ring-[#ccff00]/50"
                     autoFocus
                   />
+                  <p className="text-[10px] text-slate-600">Aceita: imagem, vídeo (mp4) ou URL do YouTube</p>
+
                   <div className="flex gap-2">
                     <button
                       onClick={handleSaveImage}
