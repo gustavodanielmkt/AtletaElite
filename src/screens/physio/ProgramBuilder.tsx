@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { ArrowLeft, Search, GripVertical, PlayCircle, PlusCircle, Edit, LineChart, User, X, Loader2, CheckCircle2, AlertCircle, ChevronLeft, ChevronRight, BookTemplate, Users, Info, Dumbbell, ImagePlus } from 'lucide-react';
+import { ArrowLeft, Search, GripVertical, PlayCircle, PlusCircle, Edit, LineChart, User, X, Loader2, CheckCircle2, AlertCircle, ChevronLeft, ChevronRight, BookTemplate, Users, Info, Dumbbell, ImagePlus, Upload } from 'lucide-react';
 import {
-  searchExercises, getExercisesByBodyPart, saveProgram, saveTemplate,
+  searchExercises, getExercisesByBodyPart, getCustomExercises, saveProgram, saveTemplate,
   getPhysioAthletes, getPhysioTemplates, createCustomExercise, updateExerciseImage,
+  uploadExerciseMedia, isVideoUrl,
   ALL_BODY_PARTS, type Exercise, type Program, type Athlete,
 } from '../../services/exerciseService';
 import { supabase } from '../../lib/supabase';
@@ -15,11 +16,20 @@ const BODY_PART_PT: Record<string, string> = {
   stretching: 'Alongamentos', mobility: 'Mobilidade', physiotherapy: 'Fisioterapia',
 };
 
-function exerciseImgSrc(exercise: Exercise): string {
+function exerciseMediaSrc(exercise: Exercise): string {
   if (exercise.gifUrl?.startsWith('http')) return exercise.gifUrl;
   if (exercise.gifUrl?.startsWith('/api/')) return exercise.gifUrl;
   if (exercise.id.startsWith('wger_') || exercise.id.startsWith('seed_') || exercise.id.startsWith('custom_')) return '';
   return `/api/exercise-image?id=${exercise.id}`;
+}
+
+function ExerciseMedia({ exercise, className, done }: { exercise: Exercise; className?: string; done?: boolean }) {
+  const src = exerciseMediaSrc(exercise);
+  if (!src) return <Dumbbell size={40} className={`text-slate-600 ${done ? 'opacity-50' : ''}`} />;
+  if (isVideoUrl(src)) {
+    return <video src={src} autoPlay loop muted playsInline className={`w-full h-full object-cover ${done ? 'opacity-70' : ''} ${className ?? ''}`} />;
+  }
+  return <img src={src} alt={exercise.name} className={`w-full h-full object-cover ${done ? 'opacity-70' : ''} ${className ?? ''}`} />;
 }
 
 const BODY_PARTS_LIST = [
@@ -151,6 +161,8 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
   });
   const [savingCustom, setSavingCustom] = useState(false);
   const [customError, setCustomError] = useState<string | null>(null);
+  const [uploadingMedia, setUploadingMedia] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const localCache = useRef<Map<string, Exercise[]>>(new Map());
   const tabsRef = useRef<HTMLDivElement>(null);
@@ -172,13 +184,20 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
     const cached = localCache.current.get(activeBodyPart);
     if (cached) { setBrowseExercises(cached); return; }
     setLoading(true);
+    // Fisioterapia tab: show ALL custom exercises from this physio
+    if (activeBodyPart === 'physiotherapy' && physioId) {
+      getCustomExercises(physioId)
+        .then(results => { localCache.current.set(activeBodyPart, results); setBrowseExercises(results); })
+        .finally(() => setLoading(false));
+      return;
+    }
     getExercisesByBodyPart(activeBodyPart, (updated) => {
       localCache.current.set(activeBodyPart, updated);
       setBrowseExercises(updated);
     })
       .then((results) => { localCache.current.set(activeBodyPart, results); setBrowseExercises(results); })
       .finally(() => setLoading(false));
-  }, [activeBodyPart, debouncedQuery]);
+  }, [activeBodyPart, debouncedQuery, physioId]);
 
   // Preload other body parts in background
   useEffect(() => {
@@ -282,6 +301,15 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
     setLoadingTemplates(false);
   };
 
+  const handleMediaUpload = async (file: File) => {
+    if (!physioId) return;
+    setUploadingMedia(true);
+    const url = await uploadExerciseMedia(physioId, file);
+    setUploadingMedia(false);
+    if (url) setCustomForm(f => ({ ...f, gifUrl: url }));
+    else setCustomError('Falha no upload. Verifique o tamanho do arquivo (máx 50MB).');
+  };
+
   const handleSaveCustomExercise = async () => {
     if (!physioId) return;
     if (!customForm.name.trim()) { setCustomError('Digite o nome do exercício.'); return; }
@@ -309,8 +337,9 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
 
     // Add to selected immediately and close modal
     const ex = result.exercise;
-    setSelected(prev => [...prev, { ...ex, phase: pendingPhase, sets: 3, reps: 12, rest: '30s' }]);
+    setSelected(prev => [...prev, { ...ex, phase: pendingPhase, sets: 3, reps: 12, rest: '30s', weight: '' }]);
     localCache.current.delete(ex.bodyPart);
+    localCache.current.delete('physiotherapy'); // always refresh the library tab
     setShowCustomModal(false);
     setCustomForm({ name: '', bodyPart: 'physiotherapy', target: '', equipment: 'body weight', gifUrl: '', instructionsRaw: '' });
   };
@@ -508,16 +537,15 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
                         isAdded ? 'border-[#ccff00]/60' : 'border-slate-800 hover:border-[#ccff00]/40'
                       }`}
                     >
-                      <div className="relative w-full aspect-square bg-slate-800 flex items-center justify-center">
-                        {exerciseImgSrc(exercise) ? (
-                          <img src={exerciseImgSrc(exercise)} alt={exercise.name} className={`w-full h-full object-cover ${isAdded ? 'opacity-70' : ''}`} />
-                        ) : (
-                          <Dumbbell size={40} className={`text-slate-600 ${isAdded ? 'opacity-50' : ''}`} />
-                        )}
+                      <div className="relative w-full aspect-square bg-slate-800 flex items-center justify-center overflow-hidden">
+                        <ExerciseMedia exercise={exercise} done={isAdded} />
                         {isAdded && (
                           <div className="absolute inset-0 flex items-center justify-center bg-[#ccff00]/10">
                             <CheckCircle2 size={36} className="text-[#ccff00] drop-shadow" />
                           </div>
+                        )}
+                        {exercise.isCustom && (
+                          <span className="absolute top-1 left-1 text-[8px] font-black uppercase bg-[#ccff00] text-slate-950 px-1.5 py-0.5 rounded">Meu</span>
                         )}
                       </div>
                       <div className="p-2 pr-7">
@@ -573,11 +601,7 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
                   <div className="ml-6">
                     <div className="flex gap-4 items-start">
                       <div className="w-20 h-20 rounded-lg overflow-hidden flex-shrink-0 relative cursor-pointer bg-slate-800 flex items-center justify-center" onClick={() => setPreviewExercise(exercise)}>
-                        {exerciseImgSrc(exercise) ? (
-                          <img src={exerciseImgSrc(exercise)} alt={exercise.name} className="w-full h-full object-cover" />
-                        ) : (
-                          <Dumbbell size={28} className="text-slate-600" />
-                        )}
+                        <ExerciseMedia exercise={exercise} />
                         <div className="absolute inset-0 flex items-center justify-center bg-black/20"><PlayCircle size={24} className="text-white" /></div>
                       </div>
                       <div className="flex-1">
@@ -637,12 +661,8 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
       {previewExercise && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-end justify-center" onClick={() => setPreviewExercise(null)}>
           <div className="bg-slate-900 rounded-t-3xl w-full max-w-2xl max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-            <div className="relative bg-slate-800 flex items-center justify-center rounded-t-3xl aspect-square">
-              {exerciseImgSrc(previewExercise) ? (
-                <img src={exerciseImgSrc(previewExercise)} alt={previewExercise.name} className="w-full aspect-square object-cover rounded-t-3xl" />
-              ) : (
-                <Dumbbell size={72} className="text-slate-600" />
-              )}
+            <div className="relative bg-slate-800 flex items-center justify-center rounded-t-3xl aspect-square overflow-hidden">
+              <ExerciseMedia exercise={previewExercise} className="rounded-t-3xl" />
               <button onClick={() => setPreviewExercise(null)} className="absolute top-4 right-4 bg-black/50 rounded-full p-2 text-white"><X size={20} /></button>
             </div>
             <div className="p-5">
@@ -697,7 +717,7 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
                   className="w-full mb-3 py-3 border border-slate-700 text-slate-400 hover:border-[#ccff00]/50 hover:text-[#ccff00] font-bold rounded-xl text-sm transition-colors flex items-center justify-center gap-2"
                 >
                   <ImagePlus size={15} />
-                  {exerciseImgSrc(previewExercise) ? 'Trocar imagem' : 'Adicionar imagem'}
+                  {previewExercise.gifUrl ? 'Trocar mídia' : 'Adicionar imagem/vídeo'}
                 </button>
               )}
 
@@ -872,9 +892,44 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
               </div>
 
               <div>
-                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-1">
-                  URL da imagem <span className="text-slate-600 normal-case font-normal">(opcional)</span>
+                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-2">
+                  Imagem ou Vídeo <span className="text-slate-600 normal-case font-normal">(opcional)</span>
                 </label>
+
+                {/* Hidden file input */}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/gif,image/webp,video/mp4,video/quicktime,video/webm"
+                  className="hidden"
+                  onChange={e => { const f = e.target.files?.[0]; if (f) handleMediaUpload(f); }}
+                />
+
+                {/* Upload button */}
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploadingMedia}
+                  className="w-full mb-2 py-3 border-2 border-dashed border-slate-700 hover:border-[#ccff00]/50 text-slate-400 hover:text-[#ccff00] font-bold rounded-xl text-sm transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {uploadingMedia
+                    ? <><Loader2 size={15} className="animate-spin" /> Enviando...</>
+                    : <><Upload size={15} /> Enviar arquivo do dispositivo</>
+                  }
+                </button>
+
+                {/* Preview */}
+                {customForm.gifUrl && (
+                  <div className="mb-2 rounded-xl overflow-hidden bg-slate-800 aspect-video flex items-center justify-center">
+                    {isVideoUrl(customForm.gifUrl)
+                      ? <video src={customForm.gifUrl} autoPlay loop muted playsInline className="w-full h-full object-cover" />
+                      : <img src={customForm.gifUrl} alt="preview" className="w-full h-full object-contain" />
+                    }
+                  </div>
+                )}
+
+                {/* Manual URL fallback */}
+                <p className="text-[10px] text-slate-600 mb-1">Ou cole uma URL:</p>
                 <input
                   type="url"
                   value={customForm.gifUrl}

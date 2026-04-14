@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Calendar, PlayCircle, Home, Dumbbell, LineChart, User, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
-import { getActiveProgram, type Program, type ProgramExercise } from '../../services/exerciseService';
+import { getActiveProgram, isVideoUrl, type Program, type ProgramExercise } from '../../services/exerciseService';
 import { supabase } from '../../lib/supabase';
 
 const PHASES = [
@@ -12,8 +12,11 @@ const PHASES = [
 
 type Phase = typeof PHASES[number]['key'];
 
-function gifSrc(id: string): string {
-  return `/api/exercise-image?id=${id}`;
+function exerciseMediaSrc(ex: ProgramExercise): string {
+  if (ex.gifUrl?.startsWith('http')) return ex.gifUrl;
+  if (ex.gifUrl?.startsWith('/api/')) return ex.gifUrl;
+  if (ex.id.startsWith('wger_') || ex.id.startsWith('seed_') || ex.id.startsWith('custom_')) return '';
+  return `/api/exercise-image?id=${ex.id}`;
 }
 
 const SESSION_PHASE_KEY = 'dt_activePhase';
@@ -187,13 +190,25 @@ export default function DailyTraining({ navigate }: { navigate: (screen: string)
                       done ? 'opacity-60 border-slate-700' : 'border-slate-800'
                     }`}
                   >
-                    <div className="w-20 h-20 rounded-lg overflow-hidden flex-shrink-0 relative bg-slate-800">
-                      <img
-                        src={gifSrc(ex.id)}
-                        alt={ex.name}
-                        className={`w-full h-full object-cover ${done ? 'grayscale' : ''}`}
-                      />
-                      {!done && (
+                    <div className="w-20 h-20 rounded-lg overflow-hidden flex-shrink-0 relative bg-slate-800 flex items-center justify-center">
+                      {exerciseMediaSrc(ex) ? (
+                        isVideoUrl(exerciseMediaSrc(ex)) ? (
+                          <video
+                            src={exerciseMediaSrc(ex)}
+                            autoPlay loop muted playsInline
+                            className={`w-full h-full object-cover ${done ? 'grayscale' : ''}`}
+                          />
+                        ) : (
+                          <img
+                            src={exerciseMediaSrc(ex)}
+                            alt={ex.name}
+                            className={`w-full h-full object-cover ${done ? 'grayscale' : ''}`}
+                          />
+                        )
+                      ) : (
+                        <Dumbbell size={28} className="text-slate-700" />
+                      )}
+                      {!done && exerciseMediaSrc(ex) && (
                         <div className="absolute inset-0 flex items-center justify-center bg-black/20">
                           <PlayCircle size={24} className="text-white" />
                         </div>

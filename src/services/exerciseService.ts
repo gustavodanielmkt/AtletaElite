@@ -882,6 +882,32 @@ export async function getCustomExercises(physioId: string): Promise<Exercise[]> 
   return (data ?? []).map(mapDbRow);
 }
 
+// ── Media upload ────────────────────────────────────────────────
+
+export async function uploadExerciseMedia(
+  physioId: string,
+  file: File
+): Promise<string | null> {
+  const ext = file.name.split('.').pop()?.toLowerCase() ?? 'jpg';
+  const path = `${physioId}/${Date.now()}_${Math.random().toString(36).slice(2, 7)}.${ext}`;
+
+  const { error } = await supabase.storage
+    .from('exercise-media')
+    .upload(path, file, { contentType: file.type, upsert: false });
+
+  if (error) {
+    console.warn('[exerciseService] Media upload failed:', error.message);
+    return null;
+  }
+
+  const { data } = supabase.storage.from('exercise-media').getPublicUrl(path);
+  return data.publicUrl;
+}
+
+export function isVideoUrl(url: string): boolean {
+  return /\.(mp4|mov|webm|ogg)(\?.*)?$/i.test(url);
+}
+
 export async function deleteCustomExercise(exerciseId: string): Promise<{ error: string } | null> {
   const { error } = await supabase
     .from('exercises')
