@@ -686,7 +686,14 @@ export default function ProgramBuilder({ navigate }: { navigate: (screen: string
 
         <div className="px-4 mt-4">
           <button
-            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+            onClick={() => {
+              setCustomForm(f => ({
+                ...f,
+                bodyPart: activeBodyPart,
+                name: query.trim() ? query.trim() : f.name,
+              }));
+              setShowCustomModal(true);
+            }}
             className="w-full py-8 border-2 border-dashed border-slate-800 rounded-xl flex flex-col items-center justify-center gap-2 text-slate-500 hover:border-[#ccff00] hover:text-[#ccff00] transition-all group"
           >
             <PlusCircle size={32} className="group-hover:scale-110 transition-transform" />

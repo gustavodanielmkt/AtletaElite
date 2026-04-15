@@ -118,7 +118,13 @@ export default function App() {
       } else if (effectiveRole === 'physio' && !data.specialty) {
         setCurrentScreen('physio-onboarding');
       } else {
-        setCurrentScreen(effectiveRole === 'physio' ? 'physio-dashboard' : 'athlete-dashboard');
+        // On page refresh (no forcedRole), keep the saved screen so the user lands back where they were.
+        // On explicit login/registration (forcedRole provided), navigate to the role dashboard.
+        const savedScreen = sessionStorage.getItem('currentScreen');
+        const hasSavedScreen = savedScreen && !SCREENS_NO_PERSIST.includes(savedScreen);
+        if (!hasSavedScreen || forcedRole) {
+          setCurrentScreen(effectiveRole === 'physio' ? 'physio-dashboard' : 'athlete-dashboard');
+        }
       }
     }
     setLoading(false);
